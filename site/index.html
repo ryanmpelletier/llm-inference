@@ -1,0 +1,642 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>LLM Inference</title>
+<meta name="description" content="An interactive guide to tensor, pipeline, data and expert parallelism in LLM serving: how models are split, how requests are batched, and which strategy keeps GPUs busy for which business case.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,650;12..96,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="css/style.css?v=1795030578">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232a78d6'/%3E%3Crect x='6' y='6' width='9' height='20' fill='%23fff'/%3E%3Crect x='17' y='6' width='9' height='20' fill='%23fff' opacity='.5'/%3E%3C/svg%3E">
+</head>
+<body>
+
+<header class="rail">
+  <div class="rail-inner">
+    <a class="brand" href="#top"><span class="chip"></span><span class="t">LLM Inference</span></a>
+    <div class="rail-controls">
+      <button type="button" class="icon-btn" id="theme-btn" aria-label="Switch theme">
+        <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+        <svg class="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+      </button>
+    </div>
+  </div>
+</header>
+
+<main id="top" class="wrap">
+
+<!-- ============================== HERO ============================== -->
+<section class="hero">
+  <div>
+    <div class="eyebrow as-is">LLM serving · examples from vLLM v0.34, November 2026</div>
+    <h1 style="margin-top:10px">How LLMs are served</h1>
+    <p class="lede" style="margin-top:14px">Serving a large language model is different from serving traditional backend traffic. There are different bottlenecks, constraints, and resources required. We'll explore at a conceptual level the various strategies to effectively serve LLMs, and the tradeoffs between them.</p>
+  </div>
+  <div class="hero-vis" aria-label="Four ways to split a model across four GPUs">
+    <svg viewBox="0 0 400 254" width="100%" role="img" aria-labelledby="hero-svg-title" style="display:block">
+      <title id="hero-svg-title">Four miniature diagrams of four GPUs each, with layers coloured: tensor parallel gives every GPU a slice of every layer, pipeline parallel gives each GPU whole layers, data parallel gives every GPU the whole model, expert parallel replicates attention and spreads each layer's experts.</title>
+      <style>
+        .hl { font: 600 10px "IBM Plex Mono", monospace; fill: #c3cbd6; }
+        .hd { font: 500 8.5px "IBM Plex Mono", monospace; fill: #8e99a8; }
+        .hb { fill: none; stroke: #222a35; stroke-width: 1; }
+      </style>
+      <!-- TP -->
+      <g transform="translate(10,14)">
+        <text class="hl" x="0" y="0">TENSOR</text><text class="hd" x="0" y="12">a slice of each model layer per GPU</text>
+        <g transform="translate(0,20)"><rect x="2" y="2" width="41" height="84" rx="3" fill="none" stroke="#3a4554"/><rect x="5" y="6" width="35" height="17" rx="1.5" fill="none" stroke="#2a3340"/><rect x="5.0" y="6" width="7.8" height="17" rx="1" fill="#2a78d6"/><rect x="5" y="26" width="35" height="17" rx="1.5" fill="none" stroke="#2a3340"/><rect x="5.0" y="26" width="7.8" height="17" rx="1" fill="#eb6834"/><rect x="5" y="46" width="35" height="17" rx="1.5" fill="none" stroke="#2a3340"/><rect x="5.0" y="46" width="7.8" height="17" rx="1" fill="#1baf7a"/><rect x="5" y="66" width="35" height="17" rx="1.5" fill="none" stroke="#2a3340"/><rect x="5.0" y="66" width="7.8" height="17" rx="1" fill="#eda100"/><rect x="47" y="2" width="41" height="84" rx="3" fill="none" stroke="#3a4554"/><rect x="50" y="6" width="35" height="17" rx="1.5" fill="none" stroke="#2a3340"/><rect x="58.8" y="6" width="7.8" height="17" rx="1" fill="#2a78d6"/><rect x="50" y="26" width="35" height="17" rx="1.5" fill="none" stroke="#2a3340"/><rect x="58.8" y="26" width="7.8" height="17" rx="1" fill="#eb6834"/><rect x="50" y="46" width="35" height="17" rx="1.5" fill="none" stroke="#2a3340"/><rect x="58.8" y="46" width="7.8" height="17" rx="1" fill="#1baf7a"/><rect x="50" y="66" width="35" height="17" rx="1.5" fill="none" stroke="#2a3340"/><rect x="58.8" y="66" width="7.8" height="17" rx="1" fill="#eda100"/><rect x="92" y="2" width="41" height="84" rx="3" fill="none" stroke="#3a4554"/><rect x="95" y="6" width="35" height="17" rx="1.5" fill="none" stroke="#2a3340"/><rect x="112.5" y="6" width="7.8" height="17" rx="1" fill="#2a78d6"/><rect x="95" y="26" width="35" height="17" rx="1.5" fill="none" stroke="#2a3340"/><rect x="112.5" y="26" width="7.8" height="17" rx="1" fill="#eb6834"/><rect x="95" y="46" width="35" height="17" rx="1.5" fill="none" stroke="#2a3340"/><rect x="112.5" y="46" width="7.8" height="17" rx="1" fill="#1baf7a"/><rect x="95" y="66" width="35" height="17" rx="1.5" fill="none" stroke="#2a3340"/><rect x="112.5" y="66" width="7.8" height="17" rx="1" fill="#eda100"/><rect x="137" y="2" width="41" height="84" rx="3" fill="none" stroke="#3a4554"/><rect x="140" y="6" width="35" height="17" rx="1.5" fill="none" stroke="#2a3340"/><rect x="166.2" y="6" width="7.8" height="17" rx="1" fill="#2a78d6"/><rect x="140" y="26" width="35" height="17" rx="1.5" fill="none" stroke="#2a3340"/><rect x="166.2" y="26" width="7.8" height="17" rx="1" fill="#eb6834"/><rect x="140" y="46" width="35" height="17" rx="1.5" fill="none" stroke="#2a3340"/><rect x="166.2" y="46" width="7.8" height="17" rx="1" fill="#1baf7a"/><rect x="140" y="66" width="35" height="17" rx="1.5" fill="none" stroke="#2a3340"/><rect x="166.2" y="66" width="7.8" height="17" rx="1" fill="#eda100"/></g>
+      </g>
+      <!-- PP -->
+      <g transform="translate(210,14)">
+        <text class="hl" x="0" y="0">PIPELINE</text><text class="hd" x="0" y="12">a block of whole layers per GPU</text>
+        <g transform="translate(0,20)"><rect x="2" y="2" width="41" height="84" rx="3" fill="none" stroke="#3a4554"/><rect x="5" y="6" width="35" height="17" rx="1.5" fill="#2a78d6"/><rect x="5" y="26" width="35" height="17" rx="1.5" fill="none" stroke="#2a3340"/><rect x="5" y="46" width="35" height="17" rx="1.5" fill="none" stroke="#2a3340"/><rect x="5" y="66" width="35" height="17" rx="1.5" fill="none" stroke="#2a3340"/><rect x="47" y="2" width="41" height="84" rx="3" fill="none" stroke="#3a4554"/><rect x="50" y="6" width="35" height="17" rx="1.5" fill="none" stroke="#2a3340"/><rect x="50" y="26" width="35" height="17" rx="1.5" fill="#eb6834"/><rect x="50" y="46" width="35" height="17" rx="1.5" fill="none" stroke="#2a3340"/><rect x="50" y="66" width="35" height="17" rx="1.5" fill="none" stroke="#2a3340"/><rect x="92" y="2" width="41" height="84" rx="3" fill="none" stroke="#3a4554"/><rect x="95" y="6" width="35" height="17" rx="1.5" fill="none" stroke="#2a3340"/><rect x="95" y="26" width="35" height="17" rx="1.5" fill="none" stroke="#2a3340"/><rect x="95" y="46" width="35" height="17" rx="1.5" fill="#1baf7a"/><rect x="95" y="66" width="35" height="17" rx="1.5" fill="none" stroke="#2a3340"/><rect x="137" y="2" width="41" height="84" rx="3" fill="none" stroke="#3a4554"/><rect x="140" y="6" width="35" height="17" rx="1.5" fill="none" stroke="#2a3340"/><rect x="140" y="26" width="35" height="17" rx="1.5" fill="none" stroke="#2a3340"/><rect x="140" y="46" width="35" height="17" rx="1.5" fill="none" stroke="#2a3340"/><rect x="140" y="66" width="35" height="17" rx="1.5" fill="#eda100"/></g>
+      </g>
+      <!-- DP -->
+      <g transform="translate(10,140)">
+        <text class="hl" x="0" y="0">DATA</text><text class="hd" x="0" y="12">a full copy of the model per GPU</text>
+        <g transform="translate(0,20)"><rect x="2" y="2" width="41" height="84" rx="3" fill="none" stroke="#3a4554"/><rect x="5" y="6" width="35" height="17" rx="1.5" fill="#2a78d6"/><rect x="5" y="26" width="35" height="17" rx="1.5" fill="#eb6834"/><rect x="5" y="46" width="35" height="17" rx="1.5" fill="#1baf7a"/><rect x="5" y="66" width="35" height="17" rx="1.5" fill="#eda100"/><rect x="47" y="2" width="41" height="84" rx="3" fill="none" stroke="#3a4554"/><rect x="50" y="6" width="35" height="17" rx="1.5" fill="#2a78d6"/><rect x="50" y="26" width="35" height="17" rx="1.5" fill="#eb6834"/><rect x="50" y="46" width="35" height="17" rx="1.5" fill="#1baf7a"/><rect x="50" y="66" width="35" height="17" rx="1.5" fill="#eda100"/><rect x="92" y="2" width="41" height="84" rx="3" fill="none" stroke="#3a4554"/><rect x="95" y="6" width="35" height="17" rx="1.5" fill="#2a78d6"/><rect x="95" y="26" width="35" height="17" rx="1.5" fill="#eb6834"/><rect x="95" y="46" width="35" height="17" rx="1.5" fill="#1baf7a"/><rect x="95" y="66" width="35" height="17" rx="1.5" fill="#eda100"/><rect x="137" y="2" width="41" height="84" rx="3" fill="none" stroke="#3a4554"/><rect x="140" y="6" width="35" height="17" rx="1.5" fill="#2a78d6"/><rect x="140" y="26" width="35" height="17" rx="1.5" fill="#eb6834"/><rect x="140" y="46" width="35" height="17" rx="1.5" fill="#1baf7a"/><rect x="140" y="66" width="35" height="17" rx="1.5" fill="#eda100"/></g>
+      </g>
+      <!-- EP -->
+      <g transform="translate(210,140)">
+        <text class="hl" x="0" y="0">EXPERT</text><text class="hd" x="0" y="12">attention + some experts per GPU</text>
+        <g transform="translate(0,20)"><rect x="2" y="2" width="41" height="84" rx="3" fill="none" stroke="#3a4554"/><rect x="5" y="6" width="35" height="7" rx="1" fill="#8e99a8" opacity=".55"/><rect x="5.0" y="15" width="7.8" height="8" rx="1" fill="#2a78d6"/><rect x="14.2" y="15.5" width="6.8" height="7" fill="none" stroke="#2a3340"/><rect x="23.0" y="15.5" width="6.8" height="7" fill="none" stroke="#2a3340"/><rect x="31.8" y="15.5" width="6.8" height="7" fill="none" stroke="#2a3340"/><rect x="5" y="26" width="35" height="7" rx="1" fill="#8e99a8" opacity=".55"/><rect x="5.0" y="35" width="7.8" height="8" rx="1" fill="#eb6834"/><rect x="14.2" y="35.5" width="6.8" height="7" fill="none" stroke="#2a3340"/><rect x="23.0" y="35.5" width="6.8" height="7" fill="none" stroke="#2a3340"/><rect x="31.8" y="35.5" width="6.8" height="7" fill="none" stroke="#2a3340"/><rect x="5" y="46" width="35" height="7" rx="1" fill="#8e99a8" opacity=".55"/><rect x="5.0" y="55" width="7.8" height="8" rx="1" fill="#1baf7a"/><rect x="14.2" y="55.5" width="6.8" height="7" fill="none" stroke="#2a3340"/><rect x="23.0" y="55.5" width="6.8" height="7" fill="none" stroke="#2a3340"/><rect x="31.8" y="55.5" width="6.8" height="7" fill="none" stroke="#2a3340"/><rect x="5" y="66" width="35" height="7" rx="1" fill="#8e99a8" opacity=".55"/><rect x="5.0" y="75" width="7.8" height="8" rx="1" fill="#eda100"/><rect x="14.2" y="75.5" width="6.8" height="7" fill="none" stroke="#2a3340"/><rect x="23.0" y="75.5" width="6.8" height="7" fill="none" stroke="#2a3340"/><rect x="31.8" y="75.5" width="6.8" height="7" fill="none" stroke="#2a3340"/><rect x="47" y="2" width="41" height="84" rx="3" fill="none" stroke="#3a4554"/><rect x="50" y="6" width="35" height="7" rx="1" fill="#8e99a8" opacity=".55"/><rect x="50.5" y="15.5" width="6.8" height="7" fill="none" stroke="#2a3340"/><rect x="58.8" y="15" width="7.8" height="8" rx="1" fill="#2a78d6"/><rect x="68.0" y="15.5" width="6.8" height="7" fill="none" stroke="#2a3340"/><rect x="76.8" y="15.5" width="6.8" height="7" fill="none" stroke="#2a3340"/><rect x="50" y="26" width="35" height="7" rx="1" fill="#8e99a8" opacity=".55"/><rect x="50.5" y="35.5" width="6.8" height="7" fill="none" stroke="#2a3340"/><rect x="58.8" y="35" width="7.8" height="8" rx="1" fill="#eb6834"/><rect x="68.0" y="35.5" width="6.8" height="7" fill="none" stroke="#2a3340"/><rect x="76.8" y="35.5" width="6.8" height="7" fill="none" stroke="#2a3340"/><rect x="50" y="46" width="35" height="7" rx="1" fill="#8e99a8" opacity=".55"/><rect x="50.5" y="55.5" width="6.8" height="7" fill="none" stroke="#2a3340"/><rect x="58.8" y="55" width="7.8" height="8" rx="1" fill="#1baf7a"/><rect x="68.0" y="55.5" width="6.8" height="7" fill="none" stroke="#2a3340"/><rect x="76.8" y="55.5" width="6.8" height="7" fill="none" stroke="#2a3340"/><rect x="50" y="66" width="35" height="7" rx="1" fill="#8e99a8" opacity=".55"/><rect x="50.5" y="75.5" width="6.8" height="7" fill="none" stroke="#2a3340"/><rect x="58.8" y="75" width="7.8" height="8" rx="1" fill="#eda100"/><rect x="68.0" y="75.5" width="6.8" height="7" fill="none" stroke="#2a3340"/><rect x="76.8" y="75.5" width="6.8" height="7" fill="none" stroke="#2a3340"/><rect x="92" y="2" width="41" height="84" rx="3" fill="none" stroke="#3a4554"/><rect x="95" y="6" width="35" height="7" rx="1" fill="#8e99a8" opacity=".55"/><rect x="95.5" y="15.5" width="6.8" height="7" fill="none" stroke="#2a3340"/><rect x="104.2" y="15.5" width="6.8" height="7" fill="none" stroke="#2a3340"/><rect x="112.5" y="15" width="7.8" height="8" rx="1" fill="#2a78d6"/><rect x="121.8" y="15.5" width="6.8" height="7" fill="none" stroke="#2a3340"/><rect x="95" y="26" width="35" height="7" rx="1" fill="#8e99a8" opacity=".55"/><rect x="95.5" y="35.5" width="6.8" height="7" fill="none" stroke="#2a3340"/><rect x="104.2" y="35.5" width="6.8" height="7" fill="none" stroke="#2a3340"/><rect x="112.5" y="35" width="7.8" height="8" rx="1" fill="#eb6834"/><rect x="121.8" y="35.5" width="6.8" height="7" fill="none" stroke="#2a3340"/><rect x="95" y="46" width="35" height="7" rx="1" fill="#8e99a8" opacity=".55"/><rect x="95.5" y="55.5" width="6.8" height="7" fill="none" stroke="#2a3340"/><rect x="104.2" y="55.5" width="6.8" height="7" fill="none" stroke="#2a3340"/><rect x="112.5" y="55" width="7.8" height="8" rx="1" fill="#1baf7a"/><rect x="121.8" y="55.5" width="6.8" height="7" fill="none" stroke="#2a3340"/><rect x="95" y="66" width="35" height="7" rx="1" fill="#8e99a8" opacity=".55"/><rect x="95.5" y="75.5" width="6.8" height="7" fill="none" stroke="#2a3340"/><rect x="104.2" y="75.5" width="6.8" height="7" fill="none" stroke="#2a3340"/><rect x="112.5" y="75" width="7.8" height="8" rx="1" fill="#eda100"/><rect x="121.8" y="75.5" width="6.8" height="7" fill="none" stroke="#2a3340"/><rect x="137" y="2" width="41" height="84" rx="3" fill="none" stroke="#3a4554"/><rect x="140" y="6" width="35" height="7" rx="1" fill="#8e99a8" opacity=".55"/><rect x="140.5" y="15.5" width="6.8" height="7" fill="none" stroke="#2a3340"/><rect x="149.2" y="15.5" width="6.8" height="7" fill="none" stroke="#2a3340"/><rect x="158.0" y="15.5" width="6.8" height="7" fill="none" stroke="#2a3340"/><rect x="166.2" y="15" width="7.8" height="8" rx="1" fill="#2a78d6"/><rect x="140" y="26" width="35" height="7" rx="1" fill="#8e99a8" opacity=".55"/><rect x="140.5" y="35.5" width="6.8" height="7" fill="none" stroke="#2a3340"/><rect x="149.2" y="35.5" width="6.8" height="7" fill="none" stroke="#2a3340"/><rect x="158.0" y="35.5" width="6.8" height="7" fill="none" stroke="#2a3340"/><rect x="166.2" y="35" width="7.8" height="8" rx="1" fill="#eb6834"/><rect x="140" y="46" width="35" height="7" rx="1" fill="#8e99a8" opacity=".55"/><rect x="140.5" y="55.5" width="6.8" height="7" fill="none" stroke="#2a3340"/><rect x="149.2" y="55.5" width="6.8" height="7" fill="none" stroke="#2a3340"/><rect x="158.0" y="55.5" width="6.8" height="7" fill="none" stroke="#2a3340"/><rect x="166.2" y="55" width="7.8" height="8" rx="1" fill="#1baf7a"/><rect x="140" y="66" width="35" height="7" rx="1" fill="#8e99a8" opacity=".55"/><rect x="140.5" y="75.5" width="6.8" height="7" fill="none" stroke="#2a3340"/><rect x="149.2" y="75.5" width="6.8" height="7" fill="none" stroke="#2a3340"/><rect x="158.0" y="75.5" width="6.8" height="7" fill="none" stroke="#2a3340"/><rect x="166.2" y="75" width="7.8" height="8" rx="1" fill="#eda100"/></g>
+      </g>
+    </svg>
+  </div>
+</section>
+
+<!-- ============================== CONTENTS ============================== -->
+<nav class="toc" aria-label="Contents">
+  <div class="eyebrow">Contents</div>
+  <ul>
+    <li><a href="#idle">1 · The problem</a> <span class="toc-sub">A GPU generating one token at a time is mostly waiting</span>
+      <ul>
+        <li><a href="#layer-read">One layer at a time</a></li>
+        <li><a href="#bus-analogy">Batching: the bus loop analogy</a></li>
+        <li><a href="#bus">The bus loop</a></li>
+      </ul>
+    </li>
+    <li><a href="#batching">2 · One GPU</a> <span class="toc-sub">How to get the most out of one GPU</span>
+      <ul>
+        <li><a href="#batch-lab">Continuous batching, step by step</a></li>
+        <li><a href="#iteration">Iteration-level scheduling</a></li>
+        <li><a href="#paged">The paged KV cache</a></li>
+      </ul>
+    </li>
+    <li><a href="#split">3 · Four ways to split</a> <span class="toc-sub">Tensor, Data, Pipeline and MoE</span>
+      <ul>
+        <li><a href="#split-viz">Split visualizer</a></li>
+        <li><a href="#tp">Tensor parallel</a> <span class="toc-sub">every GPU works on every token</span></li>
+        <li><a href="#pp">Pipeline parallel</a> <span class="toc-sub">an assembly line of layers</span></li>
+        <li><a href="#dp">Data parallel</a> <span class="toc-sub">more copies, more lanes</span></li>
+        <li><a href="#ep">Expert parallel</a> <span class="toc-sub">spread the experts, replicate the attention</span></li>
+        <li><a href="#choose">Which split to use</a></li>
+      </ul>
+    </li>
+    <li><a href="#beyond">4 · Beyond parallelism</a> <span class="toc-sub">Other ways serving engines keep the GPU busy</span></li>
+    <li><a href="#glossary">5 · Glossary</a></li>
+    <li><a href="#sources">6 · Sources</a></li>
+  </ul>
+</nav>
+
+<!-- ============================== WHY IDLE ============================== -->
+<section class="sec" id="idle">
+  <div class="sec-head">
+    <div class="eyebrow">1 · The problem</div>
+    <h2>A GPU generating one token at a time is mostly waiting</h2>
+    <p class="lede wide">To generate a single token, every weight of the model must be read from memory<sup class="fn"><a href="#fn-moe" id="fnref-moe">*</a></sup>. The weights are divided into layers, and a little math is done with each layer. Layers must be computed in order for a given token because the outputs of the computations of one layer become the inputs of the next. Each layer's weights are copied from VRAM onto the chip in small pieces before the math on them can happen, and that copy is limited by the GPU's memory bandwidth. With one token to compute, copying the weights takes far longer than doing the math on them, so the compute units spend most of their time waiting. Batching fixes this: many tokens share each copy of the weights, so the GPU gets more math done per byte it reads.</p>
+    <p class="lede wide">Generating a response has two phases. <b>Prefill</b> reads the whole prompt in one pass, so every prompt token shares each copy of the weights and the GPU stays busy. <b>Decode</b> then generates the answer one token at a time, and that is where the waiting happens. This guide is mostly about decode.</p>
+    <p class="small muted fn-note" id="fn-moe"><a href="#fnref-moe">*</a> Mixture-of-experts models work differently: each token reads the attention weights and only the few experts it is routed to, not every weight. See <a href="#ep">Expert parallel</a>.</p>
+  </div>
+  <div class="lab" id="layer-read">
+    <div class="lab-head"><h3>One layer at a time</h3><span class="hint">Drag the slider to add tokens to the batch and watch which side waits.</span></div>
+    <canvas id="layer-canvas" height="360" aria-label="Animation of a GPU: the layers of a model sit in VRAM; the current layer's weights stream over the memory bus onto the chip. The share of compute units lit shows how much of the time they are busy. Timing bars compare the copy time with the math time."></canvas>
+    <div class="controls">
+      <label>tokens in the batch <input type="range" id="layer-batch" min="0" max="10" step="0.25" value="0"> <span class="val" id="layer-batch-val">1</span></label>
+      <div class="btnrow"><button class="sm" type="button" id="layer-pause">Pause</button></div>
+    </div>
+  </div>
+  <div class="sub-head" id="bus-analogy">
+    <h2>Batching: the bus loop analogy</h2>
+  </div>
+  <div>
+    <div class="stack wide">
+      <p>Picture the model as a bus route: a loop with one stop for every layer. To produce a word, the bus has to drive the whole loop, and every rider on board gets their next word at the end of the lap. A lap costs about the same whether the bus carries one rider or sixty-four, because the expensive part is driving the route (moving the weights through the GPU), not carrying passengers. So the trick is to fill the bus. That is called <b>batching</b>, and it is the first thing any serving system does before touching parallelism. The bus loop below lets you try it.</p>
+    </div>
+  </div>
+  <div class="lab" id="bus">
+    <div class="lab-head"><h3>The bus loop</h3></div>
+    <canvas id="bus-canvas" height="262" aria-label="Animated bus driving a loop route. Riders queue at a stop, board with luggage, gain one word per lap, and leave when their answer is complete."></canvas>
+    <div class="controls">
+      <label>riders arriving <input type="range" id="bus-rate" min="0.1" max="2" step="0.1" value="0.4"> <span class="val" id="bus-rate-val">0.4</span> per lap</label>
+      <div class="btnrow" role="group" aria-label="Number of buses">
+        <button class="sm" type="button" data-bus-n="1" aria-pressed="true">1 bus</button>
+        <button class="sm" type="button" data-bus-n="2" aria-pressed="false">2 buses</button>
+      </div>
+      <div class="btnrow" role="group" aria-label="Animation speed">
+        <span class="btnrow-label">speed</span>
+        <button class="sm" type="button" data-bus-speed="0.25" aria-pressed="false">0.25×</button>
+        <button class="sm" type="button" data-bus-speed="0.5" aria-pressed="false">0.5×</button>
+        <button class="sm" type="button" data-bus-speed="1" aria-pressed="true">1×</button>
+      </div>
+      <div class="btnrow">
+        <button class="sm" type="button" id="bus-big">Long prompt: 44 bags</button>
+        <button class="sm" type="button" id="bus-rush">Rush: +6 riders</button>
+        <button class="sm" type="button" id="bus-pause">Pause</button>
+        <button class="sm" type="button" id="bus-reset">Reset</button>
+      </div>
+    </div>
+    <div class="readout">
+      <span class="k">words/s <b id="bus-wps">0</b></span>
+      <span class="k">last lap <b id="bus-last">0</b> words</span>
+      <span class="k">on board <b id="bus-onboard">0 / 8</b></span>
+      <span class="k">queued <b id="bus-wait">0</b></span>
+      <span class="k">first word after <b id="bus-ttft">–</b></span>
+      <span class="k">bumped <b id="bus-bumped">0</b></span>
+    </div>
+    <div class="bus-key">
+      <div><b>The loop</b><span>the model; each stop is a layer</span></div>
+      <div><b>One lap</b><span>one decode step: every ready rider gets one word</span></div>
+      <div><b>Riders</b><span>requests in the batch</span></div>
+      <div><b>Luggage rack</b><span>KV cache: the working memory each in-flight request needs. It grows with every token, and it shares the GPU's memory with the weights</span></div>
+      <div><b>One bag</b><span>one token's KV cache entry: a prompt token or a generated word</span></div>
+      <div><b>Boarding with luggage</b><span>prefill: the bus waits at the stop while a new rider's prompt bags are loaded, and nobody gets a word during that wait</span></div>
+      <div><b>Queue at the stop</b><span>queued requests: the latency users feel</span></div>
+    </div>
+    <div class="note"><b>Things to try.</b> Raise arrivals to about 0.7 per lap and watch the queue grow, then add a second bus and watch it drain. Watch the luggage rack, not the seats, set how many people can ride at once. Toy numbers: 8 seats and 72 bags per bus.</div>
+  </div>
+</section>
+
+<!-- ============================== BATCHING ============================== -->
+<section class="sec" id="batching">
+  <div class="sec-head">
+    <div class="eyebrow">2 · One GPU</div>
+    <h2>How to get the most out of one GPU</h2>
+    <p class="lede">Two techniques do most of the work. <b>Continuous batching</b> refills the batch at every step, and the <b>paged KV cache</b> hands out each request's working memory a small page at a time, so memory is never reserved for tokens that do not exist yet.</p>
+  </div>
+  <p>In bus terms: continuous batching lets riders step off the moment their answer is done and puts someone new in that seat on the very next lap, so the bus never drives a lap with an empty seat while people are queued. Paging is how the luggage rack works: each rider gets rack space one bag at a time as their luggage grows, instead of reserving room for the most luggage anyone could ever bring.</p>
+  <div class="lab" id="batch-lab">
+    <div class="lab-head"><h3>Continuous batching, step by step</h3><span class="hint">Each step is one decode iteration for the whole batch: every request in a slot gets one more token. Lighter bar = prompt, solid = generated tokens, dashed outline ending at a tick = the rest of the answer. A real engine cannot know where the answer ends; the tick is drawn for illustration. "Queued" counts requests that have arrived but have no slot yet.</span></div>
+    <canvas id="batch-canvas" height="262"></canvas>
+    <div class="controls">
+      <label>new requests per decode step <input type="range" id="batch-rate" min="5" max="150" value="20"> <span class="val" id="batch-rate-val">0.20</span></label>
+      <div class="btnrow"><button class="sm" id="batch-pause" type="button">Pause</button><button class="sm" id="batch-reset" type="button">Reset</button></div>
+    </div>
+    <div class="readout">
+      <span class="k"><b id="b-cont-thr">0</b> tok/step · slots busy <b id="b-cont-util">0%</b> · done <b id="b-cont-done">0</b> · avg time queued <b id="b-cont-wait">0</b> steps · can serve ≈ 0.29 requests/step</span>
+    </div>
+    <div class="note"><b>Things to try.</b> At the default 0.20 new requests per step, watch a slot empty the step its answer finishes and a queued request take it on the next step. Drag past 0.29 and more requests arrive than finish, so the queue grows without limit: that is the capacity of 8 slots when answers average about 27 tokens. Watch the KV grid too: each request's blocks grow one at a time as it generates and are freed the moment it finishes.</div>
+  </div>
+  <div class="cols">
+    <div class="stack">
+      <h3 id="iteration">Iteration-level scheduling</h3>
+      <p>Serving engines schedule at the granularity of a single model iteration: at every step, finished sequences leave and waiting ones join<span data-cite="orca,nvidia-opt"></span>. If a batch instead had to wait for its longest request, finished requests would hold idle slots while new arrivals queued.</p>
+      <p>vLLM's scheduler output is just a map of request id to number of tokens to process this step. Prefill and decode are not distinguished, which is what lets chunked prefill, prefix caching and speculative decoding share one scheduler<span data-cite="v1-blog"></span>. Chunked prefill is on by default: decodes are scheduled first, then prompt chunks fill the remaining token budget, so a long prompt never stalls everyone else's next token<span data-cite="opt-doc,sarathi"></span>.</p>
+    </div>
+    <div class="stack">
+      <h3 id="paged">The paged KV cache</h3>
+      <p>Each token's keys and values must be kept for the rest of the request. Reserving one contiguous region per request, sized for the maximum possible length, would leave most of that memory unused, because most requests stop well short of the maximum<span data-cite="paged"></span>. Instead, the engine allocates fixed-size blocks on demand, like virtual memory pages (vLLM calls this PagedAttention and uses 64 tokens per block by default), so the only waste is the unfilled part of each request's last block, and far more requests fit in the batch<span data-cite="paged,args-doc"></span>.</p>
+      <p>Paging has a cost. The engine admits a request when there is room for its prompt, but it cannot know how long the answer will be, and every running request adds one token to its cache each step. If the pool runs out mid-answer, the engine <b>preempts</b> a request. In vLLM, it frees all of the most recently admitted request's blocks and puts that request back at the front of the queue. When space opens up, it rebuilds the request's cache by running prefill over the prompt plus every token generated so far, then continues. The other requests are unaffected. The preempted user sees their answer pause, and the GPU redoes work it already did<span data-cite="opt-doc"></span>. Occasional preemptions are the price of not reserving memory; frequent ones mean the cache is too small for the load, and the fix is a lower cap on concurrent requests or more memory for the cache.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============================== SPLIT VISUALIZER ============================== -->
+<section class="sec" id="split">
+  <div class="sec-head">
+    <div class="eyebrow">3 · Four ways to split</div>
+    <h2>Tensor, Data, Pipeline and MoE</h2>
+    <p class="lede">When batching alone is not enough, because the model does not fit on one GPU or one GPU cannot serve enough traffic, the model is split or copied across GPUs. Each strategy answers two questions: which GPU holds which weights, and which GPUs touch a given token.</p>
+  </div>
+  <div class="lab" id="split-viz">
+    <div class="lab-head"><h3>Split visualizer</h3><span class="hint" id="split-descr"></span></div>
+    <div class="controls">
+      <div class="btnrow" role="group" aria-label="Strategy">
+        <button class="sm" type="button" data-split="tp">Tensor</button>
+        <button class="sm" type="button" data-split="pp">Pipeline</button>
+        <button class="sm" type="button" data-split="dp">Data</button>
+        <button class="sm" type="button" data-split="ep">Expert</button>
+      </div>
+      <div class="btnrow" role="group" aria-label="GPU count">
+        <button class="sm" type="button" data-split-gpus="2">2 GPUs</button>
+        <button class="sm" type="button" data-split-gpus="4" aria-pressed="true">4 GPUs</button>
+        <button class="sm" type="button" data-split-gpus="8">8 GPUs</button>
+      </div>
+      <label><span id="split-load-label">requests in flight</span> <input type="range" id="split-load" min="1" max="8" value="3"> <span class="val" id="split-load-val">3</span></label>
+      <button class="sm" type="button" id="split-pause">Pause</button>
+    </div>
+    <canvas id="split-canvas" height="420"></canvas>
+    <div class="legend"><span class="tip" tabindex="0" data-tip-title="Layers" data-tip="The model is drawn as 8 layers, one colour each, with layer 1 at the top. Every token passes through all of them in order, because each layer&#x27;s output is the next layer&#x27;s input.">each colour = one layer (layer 1 at the top)</span><span class="tip" tabindex="0" data-tip-title="Solid" data-tip="Weights stored in this GPU&#x27;s memory. Tensor parallel gives each GPU a slice of every layer, pipeline parallel gives it whole layers, data parallel gives it the whole model, and expert parallel gives it the attention weights plus a share of the experts.">solid = weights this GPU holds</span><span class="tip" tabindex="0" data-tip-title="Outline" data-tip="Weights that belong to the model but are stored on another GPU. This GPU never reads them.">outline = weights held elsewhere</span><span class="tip" tabindex="0" data-tip-title="Dots" data-tip="A batch of tokens working through the model, one layer after another. Finishing the last layer produces one new token for every request in the batch.">dots = a batch moving through the layers</span><span class="tip" tabindex="0" data-tip-title="All-reduce" data-tip="Every GPU sends its partial result and receives the sum of everyone&#x27;s, so all GPUs continue with the same complete result. Tensor parallel does this twice per layer."><i style="background:var(--accent)"></i>flash = all-reduce</span><span class="tip" tabindex="0" data-tip-title="All-to-all hop" data-tip="A token travels to the GPU that holds the expert it was routed to, and the result travels back. Expert parallel does this at every mixture-of-experts layer."><i style="background:var(--ep)"></i>arc = all-to-all hop</span><span class="tip" tabindex="0" data-tip-title="Idle" data-tip="A GPU with nothing to do at that moment. In pipeline parallel, a GPU waits until a batch reaches its layers; this gap is called the pipeline bubble."><i style="background:var(--idle)"></i>hatch = idle</span></div>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Strategy</th><th>What each GPU holds</th><th>Who touches one token</th><th>Communication</th><th>Scales what</th></tr></thead>
+      <tbody>
+        <tr><td><span class="pill tp">TP</span> Tensor</td><td>1/<span class="split-n">4</span> of every layer's weight matrices, 1/<span class="split-n">4</span> of the KV cache</td><td><span class="split-all">All 4</span> GPUs, in lockstep</td><td>2 all-reduces per layer<span data-cite="megatron"></span></td><td>Model size and per-token latency</td></tr>
+        <tr><td><span class="pill pp">PP</span> Pipeline</td><td>A contiguous block of whole layers</td><td>Each GPU in turn</td><td>Point-to-point hand-off of activations between stages<span data-cite="megatron2"></span></td><td>Model size (across slow links)</td></tr>
+        <tr><td><span class="pill dp">DP</span> Data</td><td>The whole model, its own KV cache</td><td>Exactly one GPU</td><td>None between replicas<span data-cite="dp-doc"></span></td><td>Request throughput</td></tr>
+        <tr><td><span class="pill ep">EP</span> Expert</td><td>Attention replicated; 1/<span class="split-n">4</span> of the MoE experts</td><td>Its home GPU plus the GPUs owning its chosen experts</td><td>All-to-all dispatch and combine per MoE layer<span data-cite="ep-doc"></span></td><td>MoE model size and batch efficiency</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ============================== TENSOR ============================== -->
+<section class="sec strategy" id="tp">
+  <div class="strategy-head">
+    <span class="badge tp">TENSOR PARALLEL</span>
+    <div>
+      <h2>Every GPU works on every token</h2>
+      <p class="lede" style="margin-top:6px">Each weight matrix is cut into N slices. One batch runs on all N GPUs at the same time, and after every layer the partial results are summed. Lowest latency per token, highest demand on the interconnect.</p>
+    </div>
+  </div>
+  <div class="analogy"><b>In plain terms.</b> Every GPU holds a slice of every layer. For each word, all of them work on their own slice at the same time, then combine their results before moving to the next layer. One word comes out faster and no GPU needs the whole model. But they combine results twice per layer, which is dozens of times per word, so it only pays off over a very fast link such as NVLink inside one server.</div>
+  <div class="facts">
+    <div class="fact"><div class="k">Weights per GPU</div><div class="v">1 / N<small>140 GB of weights → 35 GB per GPU at TP=4</small></div></div>
+    <div class="fact"><div class="k">KV cache per GPU</div><div class="v">1 / N<small>sharded by attention head; freed memory becomes more batch</small></div></div>
+    <div class="fact"><div class="k">Communication</div><div class="v">2 all-reduces per layer<small>160 synchronisations per token on an 80-layer model</small></div></div>
+    <div class="fact"><div class="k">Wants</div><div class="v">NVLink inside one node<small>several times faster than PCIe</small></div></div>
+  </div>
+  <div class="cols" style="margin-top:18px">
+    <div>
+      <h3>How it keeps GPUs busy</h3>
+      <p>The attention heads and the MLP's hidden dimension are independent along one axis, so each GPU multiplies its slice without talking to anyone. Splitting the first matrix of each pair by columns and the second by rows means a transformer block needs only two all-reduces in the forward pass<span data-cite="megatron"></span>. Because every GPU streams only 1/N of the weights per step, the memory-bound decode step gets N× shorter, which is why TP lowers per-token latency, not only memory<span data-cite="kipply,amd-tp"></span>.</p>
+      <p>The price is the all-reduce. It sits on the critical path and cannot overlap with the compute it depends on<span data-cite="hf-playbook"></span>. The messages are small, so their cost is mostly fixed latency rather than bandwidth<span data-cite="dell-char"></span>. Efficiency drops sharply once TP grows past one server, so keep TP within the GPUs of one node and pipeline across nodes<span data-cite="hf-playbook,megatron2"></span>.</p>
+      <div class="pros-cons">
+        <div><h4><i style="background:var(--good)"></i>Strengths</h4><ul><li>Lowest time per token of any split<span data-cite="jarvis,psu-amd"></span></li><li>Frees memory on every GPU for KV cache, so bigger batches and longer contexts<span data-cite="opt-doc"></span></li><li>Simple: one process group, one endpoint, one flag</li></ul></div>
+        <div><h4><i style="background:var(--crit)"></i>Costs</h4><ul><li>Needs fast links; over PCIe or Ethernet the all-reduce can cost more than it saves<span data-cite="par-doc,megatron2"></span></li><li>Diminishing returns: each doubling of TP saves less, because the per-layer all-reduce does not shrink as GPUs are added<span data-cite="databricks"></span></li><li>All GPUs fail together; a single GPU fault stops the whole replica<span data-cite="failsafe"></span></li><li>Attention heads must divide evenly; past the KV-head count, KV cache is replicated, not sharded<span data-cite="llama-src"></span></li></ul></div>
+      </div>
+    </div>
+    <div>
+      <h3>Business use cases</h3>
+      <div class="usecases">
+        <div class="usecase"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 17l6-6-6-6M12 19h8"/></svg><div><b>Interactive assistant on a model too big for one GPU</b><span>Users watch every token stream in. Tensor parallelism across the GPUs of one server gives the shortest time per token, because every GPU works on every token.</span></div></div>
+        <div class="usecase"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg><div><b>Agent loops with tight time budgets</b><span>An agent that makes many model calls per task multiplies latency. Tensor parallelism buys the fastest single-stream decode available on the hardware.</span></div></div>
+        <div class="usecase"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M9 20v-6"/></svg><div><b>A model that fits in one server but not on one GPU</b><span>The standard next step after one GPU, as long as the GPUs are joined by NVLink-class links. Keep the tensor-parallel degree at or below the model's number of KV heads, so the KV cache is split across GPUs instead of copied<span data-cite="par-doc"></span>.</span></div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================== PIPELINE ============================== -->
+<section class="sec strategy" id="pp">
+  <div class="strategy-head">
+    <span class="badge pp">PIPELINE PARALLEL</span>
+    <div>
+      <h2>An assembly line of layers</h2>
+      <p class="lede" style="margin-top:6px">GPU 0 holds the first block of layers, GPU 1 the next, and so on. A batch walks from stage to stage. Only a small activation tensor crosses between GPUs, so the link can be slow, but a stage with nothing to do stands idle.</p>
+    </div>
+  </div>
+  <div class="analogy"><b>The bus version.</b> A relay. The loop is split between drivers: driver 1 covers layers 1–20, driver 2 covers 21–40, and each hands the riders to the next. The route can now be longer than any one driver could manage, and drivers only meet at handoff points, so they can sit in different servers on an ordinary network. But a driver waiting for the next handoff sits idle. That idle time is the pipeline bubble, and the fix is keeping several busloads in flight so every stretch stays busy. No rider gets their word faster than the full loop takes.</div>
+  <div class="facts">
+    <div class="fact"><div class="k">Weights per GPU</div><div class="v">1 / N layers<small>uneven splits allowed, so 3 or 6 GPUs work</small></div></div>
+    <div class="fact"><div class="k">KV cache per GPU</div><div class="v">only its own layers<small>same total capacity as TP</small></div></div>
+    <div class="fact"><div class="k">Communication</div><div class="v">1 hand-off per stage<small>one activation tensor, point to point</small></div></div>
+    <div class="fact"><div class="k">Idle time</div><div class="v">(stages − micro-batches) / stages<small>the bubble; engines keep up to N micro-batches in flight</small></div></div>
+  </div>
+  <div class="cols" style="margin-top:18px">
+    <div>
+      <h3>How it keeps GPUs busy (and when it does not)</h3>
+      <p>A pipeline stage is busy only while a micro-batch is on it. With one batch in flight, N−1 of N stages wait. Engines hide the bubble by keeping as many micro-batches in flight as there are stages; vLLM's scheduler holds a queue of in-flight micro-batches equal to the pipeline size and finishes the oldest as soon as it returns<span data-cite="pp-rfc"></span>. That needs enough concurrent requests to go around, which is why PP suits throughput-oriented workloads<span data-cite="psu-amd"></span>.</p>
+      <p>Even when full, PP does not make a single request faster: each token still visits every stage in sequence<span data-cite="nvidia-trillion,psu-amd"></span>. What it buys is memory across slow links. Only activations cross between stages, once per stage per step, so two nodes joined by Ethernet or a workstation with PCIe-only cards can host a model neither could hold alone<span data-cite="par-doc,megatron2"></span>. The vLLM docs say it directly: on nodes without NVLink, use pipeline parallelism instead of tensor parallelism for higher throughput and lower communication overhead<span data-cite="par-doc"></span>.</p>
+      <div class="pros-cons">
+        <div><h4><i style="background:var(--good)"></i>Strengths</h4><ul><li>Tolerates slow interconnects: PCIe, Ethernet, cross-node<span data-cite="par-doc,megatron2"></span></li><li>Supports uneven GPU counts and uneven layer splits<span data-cite="par-doc"></span></li><li>Composes with TP: TP inside each node, PP across nodes<span data-cite="par-doc"></span></li></ul></div>
+        <div><h4><i style="background:var(--crit)"></i>Costs</h4><ul><li>No per-token speed-up; latency is the sum of the stages<span data-cite="psu-amd,nvidia-trillion"></span></li><li>Bubbles when traffic is light: with fewer requests in flight than stages, some GPUs sit idle<span data-cite="jarvis"></span></li><li>Each stage needs enough micro-batches, so KV cache must hold more concurrent requests to reach the same utilisation as TP</li></ul></div>
+      </div>
+    </div>
+    <div>
+      <h3>Business use cases</h3>
+      <div class="usecases">
+        <div class="usecase"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="5" width="9" height="14" rx="1.5"/><rect x="13" y="5" width="9" height="14" rx="1.5"/><path d="M11 12h2"/></svg><div><b>A model bigger than one server</b><span>Tensor parallelism inside each server, where the links are fast, and pipeline parallelism between servers, where only activations cross the slower network. The usual rule is tensor-parallel size = GPUs per server and pipeline-parallel size = number of servers<span data-cite="par-doc"></span>. Per-token latency is higher than on one server.</span></div></div>
+        <div class="usecase"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 20V10M10 20V4M16 20v-8M22 20H2"/></svg><div><b>Batch jobs when the model must be split</b><span>With no user waiting, per-token latency does not matter. Keep enough requests in flight to fill every stage, and PCIe machines do the job without NVLink.</span></div></div>
+        <div class="usecase"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M17.5 14v7M14 17.5h7"/></svg><div><b>Workstations and PCIe-only cards</b><span>Without NVLink, every tensor-parallel all-reduce crosses PCIe. Pipeline parallelism passes one small activation tensor between cards per stage instead, and it can split layers unevenly when the GPU count does not divide the model's attention heads<span data-cite="par-doc"></span>. Tensor parallelism over PCIe still works across a few cards and gives lower latency at light load, so test both under real traffic.</span></div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================== DATA ============================== -->
+<section class="sec strategy" id="dp">
+  <div class="strategy-head">
+    <span class="badge dp">DATA PARALLEL</span>
+    <div>
+      <h2>More copies, more lanes</h2>
+      <p class="lede" style="margin-top:6px">Every GPU (or every TP group) holds the entire model and serves its own stream of requests. Nothing is shared, nothing is synchronised, and capacity scales almost linearly with replicas.</p>
+    </div>
+  </div>
+  <div class="analogy"><b>The bus version.</b> More buses on the same loop. Each bus has its own driver and its own riders, so nobody has to coordinate and capacity grows almost perfectly. If one bus breaks down, the others keep running. But a single rider's trip is no faster, and every bus is a full copy of the model, so each GPU (or tensor-parallel group) must hold all the weights. The <a href="#bus">bus loop</a> in section 1 has a second bus to try.</div>
+  <div class="facts">
+    <div class="fact"><div class="k">Weights per GPU</div><div class="v">all of them<small>the model must fit (alone or as a TP group)</small></div></div>
+    <div class="fact"><div class="k">KV cache per GPU</div><div class="v">its own requests only<small>no sharing of prefixes across replicas</small></div></div>
+    <div class="fact"><div class="k">Communication</div><div class="v">none<small>a load balancer routes whole requests</small></div></div>
+    <div class="fact"><div class="k">Failure domain</div><div class="v">1 / N of capacity<small>other replicas keep serving</small></div></div>
+  </div>
+  <div class="cols" style="margin-top:18px">
+    <div>
+      <h3>How it keeps GPUs busy</h3>
+      <p>Each replica runs its own continuous batch. Because replicas never wait on each other, utilisation depends only on whether the load balancer keeps each queue fed. Throughput scales linearly with the number of replicas. DP alone is not enough for the largest models, because each replica needs the full weights on its own GPUs<span data-cite="nvidia-trillion"></span>.</p>
+      <p>The flip side is memory. Every replica pays the full weight cost, so with N GPUs and a model that just barely fits, DP leaves the least room for KV cache and therefore the smallest batch per GPU. Throughput and cost favour replicas; latency favours TP.</p>
+      <div class="pros-cons">
+        <div><h4><i style="background:var(--good)"></i>Strengths</h4><ul><li>Near-linear throughput scaling, no inter-GPU traffic<span data-cite="nvidia-trillion,dp-doc"></span></li><li>Fault isolation and simple autoscaling: add or remove replicas<span data-cite="failsafe"></span></li><li>Best cost per token for offline work when the model fits<span data-cite="amd-tp"></span></li></ul></div>
+        <div><h4><i style="background:var(--crit)"></i>Costs</h4><ul><li>Cannot speed up a single request<span data-cite="shift"></span></li><li>N copies of the weights; least KV cache per GPU</li><li>Prefix cache is per replica, so routing must be prefix-aware to reuse it<span data-cite="dp-doc,sglang-dp"></span></li></ul></div>
+      </div>
+    </div>
+    <div>
+      <h3>Business use cases</h3>
+      <div class="usecases">
+        <div class="usecase"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a8 8 0 0 1-11.5 7.2L4 21l1.6-4.6A8 8 0 1 1 21 12z"/></svg><div><b>Customer support chat</b><span>Many short conversations on a model that fits on one GPU. The limit is request volume, not model size: one copy per GPU behind a load balancer, each batching its own requests. Split a copy with tensor parallelism only if one GPU leaves too little KV cache for your conversation lengths.</span></div></div>
+        <div class="usecase"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3l9 4.5-9 4.5-9-4.5L12 3zM3 12l9 4.5 9-4.5M3 16.5L12 21l9-4.5"/></svg><div><b>Multi-tenant platforms with uptime targets</b><span>A failed copy costs only its share of capacity instead of an outage. Rolling upgrades drain one copy at a time.</span></div></div>
+        <div class="usecase"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 17l5-5 4 4 8-8M14 8h6v6"/></svg><div><b>Elastic traffic</b><span>Daytime peaks and night-time troughs map directly onto the number of copies, which is what Kubernetes autoscalers and routers such as llm-d manage<span data-cite="llm-d"></span>.</span></div></div>
+        <div class="usecase"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 20V10M10 20V4M16 20v-8M22 20H2"/></svg><div><b>Offline batch processing</b><span>Summaries, classification and evaluations have no user waiting, so cost per token is the only goal. Run one copy per GPU, or per the smallest group of GPUs the model fits on, allow as many requests in flight as the KV cache holds, and stop raising concurrency when throughput stops improving.</span></div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================== EXPERT ============================== -->
+<section class="sec strategy" id="ep">
+  <div class="strategy-head">
+    <span class="badge ep">EXPERT PARALLEL</span>
+    <div>
+      <h2>Spread the experts, replicate the attention</h2>
+      <p class="lede" style="margin-top:6px">Mixture-of-experts models hold hundreds of expert MLPs per layer but use only a few per token. Expert parallelism gives each GPU a share of the experts and routes tokens to them, usually combined with data-parallel attention.</p>
+    </div>
+  </div>
+  <div class="analogy"><b>In plain terms.</b> A mixture-of-experts model has many specialist sub-networks, called experts, in each layer, and each word uses only a few of them. Expert parallel puts different experts on different GPUs, sends each word to the GPUs holding its experts, and gathers the results back. Every GPU stays busy only when enough words flow through to reach all the experts, so this wants big batches and a fast network between GPUs.</div>
+  <div class="facts">
+    <div class="fact"><div class="k">Weights per GPU</div><div class="v">attention + E/N experts<small>hundreds of billions of weights, tens of billions active per token</small></div></div>
+    <div class="fact"><div class="k">KV cache per GPU</div><div class="v">its own requests<small>no duplication of MLA latents, unlike TP</small></div></div>
+    <div class="fact"><div class="k">Communication</div><div class="v">all-to-all ×2 per MoE layer<small>dispatch tokens to experts, combine results</small></div></div>
+    <div class="fact"><div class="k">Wants</div><div class="v">RDMA fabric + traffic<small>InfiniBand/RoCE or a rack-scale NVLink domain</small></div></div>
+  </div>
+  <div class="cols" style="margin-top:18px">
+    <div>
+      <h3>How it keeps GPUs busy</h3>
+      <p>Under TP, a MoE layer's experts are sliced thin across every GPU and each all-reduce still happens twice per layer. Under EP, whole experts live on one GPU, so the matrix multiplies stay large and efficient, and the collective becomes an all-to-all that moves only the tokens each expert needs<span data-cite="nvidia-trillion,ep-doc"></span>. With only a few experts active per token, spreading the experts across many GPUs gathers more tokens for each expert, which keeps its matrix multiplies efficient, and each GPU reads fewer expert weights per step<span data-cite="deepseek-infra"></span>.</p>
+      <p>Attention is kept data-parallel because many large MoE models use attention with very few KV heads, or a single compressed latent per token (multi-head latent attention); TP would duplicate the latent projections and KV cache on every rank<span data-cite="wideep,sglang-dp"></span>. Each DP rank owns its batch and KV cache, the experts are spread over TP×DP ranks, and the effective batch across the deployment becomes large enough to keep every expert working. This layout is called "wide EP"<span data-cite="wideep,sglang-ep"></span>.</p>
+      <div class="pros-cons">
+        <div><h4><i style="background:var(--good)"></i>Strengths</h4><ul><li>Fits very large MoE models on one server at low precision, and scales to racks<span data-cite="ep-doc"></span></li><li>Keeps expert matrix multiplies large, so the GPU stays efficient<span data-cite="nvidia-trillion"></span></li><li>Cuts replicas needed for a target QPS, lowering cost per token<span data-cite="wideep"></span></li></ul></div>
+        <div><h4><i style="background:var(--crit)"></i>Costs</h4><ul><li>All-to-all over a slow network dominates the step; it works best when every GPU sits in one fast NVLink domain, such as a rack-scale system<span data-cite="gb200"></span></li><li>Needs high, steady traffic to fill all experts; light load leaves experts idle</li><li>Hot experts imbalance GPUs; needs expert load balancing (EPLB)<span data-cite="ep-doc"></span></li><li>Operationally complex: DeepEP kernels, RDMA, lockstep DP ranks<span data-cite="ep-doc,dp-doc"></span></li></ul></div>
+      </div>
+    </div>
+    <div>
+      <h3>Business use cases</h3>
+      <div class="usecases">
+        <div class="usecase"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2a10 10 0 1 0 10 10"/><path d="M12 6v6l4 2"/></svg><div><b>A high-volume API on a very large MoE model</b><span>Many customers send heavy, steady traffic, so every step carries thousands of tokens. Spreading the experts across GPUs gives each expert enough of those tokens to keep its matrix multiplies large, and each expert is read from memory once per step for everyone's tokens. That is what brings the cost per token down. It needs a fast network for the all-to-all exchange<span data-cite="wideep,ep-doc"></span>.</span></div></div>
+        <div class="usecase"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6l7-3z"/></svg><div><b>A private assistant on one server</b><span>Large-model answers on hardware you own. Expert parallelism spreads the experts over the server's GPUs so the whole model fits, and each token reads only the few experts it needs, so with a handful of users decode runs at about the speed of a much smaller model.</span></div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================== CHOOSE ============================== -->
+<section class="sec" id="choose">
+  <div class="sec-head">
+    <div class="eyebrow">3 · Four ways to split</div>
+    <h2>Which split to use</h2>
+    <p class="lede">The use cases above, reduced to a few questions. These are starting points; the right answer for a real deployment comes from load-testing it.</p>
+  </div>
+  <div class="fc" aria-label="Decision flowchart: answer each question; yes leads right to a layout, no leads down to the next question.">
+    <div class="fc-q"><span class="fc-n">1</span><span>Does the model fit on one GPU, with room left for the KV cache?</span></div>
+    <div class="fc-yes"><span>yes</span></div>
+    <div class="fc-leaf dp"><b>No split</b><span>One copy of the model per GPU. Add copies with data parallelism when you need more throughput<span data-cite="par-doc,opt-doc"></span>.</span></div>
+    <div class="fc-no"><span>no</span></div>
+    <div class="fc-q"><span class="fc-n">2</span><span>Is it a large mixture-of-experts model?</span></div>
+    <div class="fc-yes"><span>yes</span></div>
+    <div class="fc-leaf ep"><b>Expert + data parallel</b><span>Expert parallelism spreads the experts across GPUs; data parallelism runs attention on every GPU. At large scale, prefill and decode usually run on separate GPUs<span data-cite="ep-doc,wideep"></span>.</span></div>
+    <div class="fc-no"><span>no</span></div>
+    <div class="fc-q"><span class="fc-n">3</span><span>Does it need more than one node?</span></div>
+    <div class="fc-yes"><span>yes</span></div>
+    <div class="fc-leaf tp-pp"><b>Tensor + pipeline parallel</b><span>Tensor parallelism across the GPUs inside each node, pipeline parallelism across the nodes<span data-cite="par-doc"></span>.</span></div>
+    <div class="fc-no"><span>no</span></div>
+    <div class="fc-q"><span class="fc-n">4</span><span>Are the node's GPUs joined by fast GPU-to-GPU links, such as NVLink, and does the GPU count divide the model's attention heads evenly?</span></div>
+    <div class="fc-yes"><span>yes</span></div>
+    <div class="fc-leaf tp"><b>Tensor parallel</b><span>Split every layer across the node's GPUs<span data-cite="par-doc"></span>.</span></div>
+    <div class="fc-no"><span>no</span></div>
+    <div class="fc-leaf pp fc-end"><b>Pipeline parallel</b><span>Give each GPU a block of whole layers<span data-cite="par-doc"></span>.</span></div>
+    <div class="fc-then"><b>Then, for any layout above:</b> if you still need more throughput, run more copies of the whole layout with data parallelism, and route with a prefix-aware load balancer so a request whose prompt is already cached lands on the copy that holds it<span data-cite="dp-doc,llm-d"></span>.</div>
+  </div>
+</section>
+
+<!-- ============================== BEYOND ============================== -->
+<section class="sec" id="beyond">
+  <div class="sec-head">
+    <div class="eyebrow">4 · Beyond parallelism</div>
+    <h2>Other ways serving engines keep the GPU busy</h2>
+    <p class="lede">Parallelism decides where the weights live. These features decide how little time is wasted around them.</p>
+  </div>
+  <div class="cols-3">
+    <div class="fact"><div class="k">Prefix caching</div><div class="v">On by default<small>KV blocks are hashed by their content and prefix; a repeated system prompt is never recomputed. It costs almost nothing when nothing is shared, so it is safe to leave on<span data-cite="prefix-doc,v1-blog"></span>.</small></div></div>
+    <div class="fact"><div class="k">Speculative decoding</div><div class="v">Trade idle compute for tokens<small>A draft (n-gram, EAGLE, MTP) proposes several tokens; the model verifies them in one step. Helps at low load, can hurt at high load where the GPU is already busy<span data-cite="specdec-doc,specdec-blog"></span>.</small></div></div>
+    <div class="fact"><div class="k">Async scheduling</div><div class="v">On by default<small>The CPU prepares step N+1 while the GPU runs step N, closing the gaps between kernels<span data-cite="v014,mrv2"></span>.</small></div></div>
+    <div class="fact"><div class="k">CUDA graphs</div><div class="v">FULL_AND_PIECEWISE<small>Captures whole decode steps so dozens of small kernels launch as one, removing per-kernel launch overhead that dominates small batches<span data-cite="cuda-doc,v011"></span>.</small></div></div>
+    <div class="fact"><div class="k">Prefill/decode disaggregation</div><div class="v">Separate GPU pools<small>Compute-bound prefill and memory-bound decode get their own GPUs and their own parallelism. Does not raise throughput; it makes tail latency predictable (p99 ITL 169 → 29 ms in one guide)<span data-cite="disagg-doc,pd-guide,distserve"></span>.</small></div></div>
+    <div class="fact"><div class="k">Context parallelism</div><div class="v">Shard the sequence<small>vLLM can also split very long prompts, or the KV cache during decode, across GPUs for long-context workloads<span data-cite="args-doc,releases"></span>.</small></div></div>
+  </div>
+</section>
+
+<!-- ============================== GLOSSARY ============================== -->
+<section class="sec" id="glossary">
+  <div class="sec-head">
+    <div class="eyebrow">5 · Glossary</div>
+    <h2>Simple descriptions for technical terms</h2>
+    <p class="lede">71 terms, grouped by topic. Words with a dotted underline elsewhere on the page link here, and hovering one shows its definition. Where the bus loop has a part for a term, the entry says which.</p>
+  </div>
+  <div class="gloss-tools">
+    <input type="search" id="gloss-q" placeholder="Search, e.g. KV cache or latency" aria-label="Search the glossary" autocomplete="off">
+    <div class="gloss-chips" role="group" aria-label="Filter by topic">
+        <button class="sm" type="button" data-gcat="all" aria-pressed="true">All</button>
+        <button class="sm" type="button" data-gcat="basics" aria-pressed="false">The basics</button>
+        <button class="sm" type="button" data-gcat="inside" aria-pressed="false">Inside the model</button>
+        <button class="sm" type="button" data-gcat="memory" aria-pressed="false">Memory and the KV cache</button>
+        <button class="sm" type="button" data-gcat="serving" aria-pressed="false">Serving and scheduling</button>
+        <button class="sm" type="button" data-gcat="parallel" aria-pressed="false">Parallelism</button>
+        <button class="sm" type="button" data-gcat="hardware" aria-pressed="false">Hardware and networking</button>
+        <button class="sm" type="button" data-gcat="limits" aria-pressed="false">Speed limits</button>
+        <button class="sm" type="button" data-gcat="metrics" aria-pressed="false">Measuring it</button>
+    </div>
+    <span class="gloss-count" id="gloss-count" aria-live="polite">71 terms</span>
+  </div>
+  <div class="gloss-group" data-cat="basics">
+    <h3>The basics</h3>
+    <dl class="gloss">
+      <div id="g-llm" data-match="LLM|large language model"><dt>Large language model (LLM)</dt><dd><p class="g-def">A neural network trained on huge amounts of text to predict the next token. Chat assistants, coding tools and agents are all built on one.</p><p class="g-see">See <a href="#idle">1 · The problem</a></p></dd></div>
+      <div id="g-model"><dt>Model</dt><dd><p class="g-def">The trained network: a fixed architecture plus the weights it learned.</p><p class="g-bus"><b>On the bus:</b> The whole loop route.</p><p class="g-see">See <a href="#bus">The bus loop</a></p></dd></div>
+      <div id="g-weights" data-match="weights|parameters|parameter"><dt>Weights (parameters)</dt><dd><p class="g-def">The numbers a model learned during training. A “70B” model has about 70 billion of them. Every token uses all of them, or the active share in a mixture-of-experts model, so where the weights live decides how a model is split across GPUs.</p><p class="g-see">See <a href="#idle">1 · The problem</a>, <a href="#split">3 · Split visualizer</a></p></dd></div>
+      <div id="g-layer" data-match="layer|layers"><dt>Layer</dt><dd><p class="g-def">One of the identical blocks a model is stacked from. Every token passes through every layer, in order. Large models have from a few dozen to over a hundred.</p><p class="g-bus"><b>On the bus:</b> A stop on the loop.</p><p class="g-see">See <a href="#bus">The bus loop</a>, <a href="#pp">Pipeline parallel</a></p></dd></div>
+      <div id="g-token" data-match="token|tokens"><dt>Token</dt><dd><p class="g-def">The unit a model reads and writes: a word, part of a word or a punctuation mark. In English a token averages about three quarters of a word. Models generate text one token at a time.</p><p class="g-bus"><b>On the bus:</b> One word, earned once per lap.</p><p class="g-see">See <a href="#idle">1 · The problem</a></p></dd></div>
+      <div id="g-prompt" data-match="prompt|prompts"><dt>Prompt</dt><dd><p class="g-def">The text sent to the model: the user&#x27;s message plus any instructions, documents or conversation history. Longer prompts take longer to process and use more KV cache.</p><p class="g-bus"><b>On the bus:</b> The rider&#x27;s luggage.</p><p class="g-see">See <a href="#batching">2 · One GPU</a></p></dd></div>
+      <div id="g-request" data-match="request|requests"><dt>Request</dt><dd><p class="g-def">One call to the model: a prompt goes in and a generated answer comes out. A server handles many requests at once.</p><p class="g-bus"><b>On the bus:</b> One rider.</p><p class="g-see">See <a href="#batching">2 · One GPU</a>, <a href="#bus">The bus loop</a></p></dd></div>
+      <div id="g-inference" data-match="inference"><dt>Inference</dt><dd><p class="g-def">Running a trained model to produce output, as opposed to training it. Answering a chat message is inference.</p><p class="g-see">See <a href="#idle">1 · The problem</a></p></dd></div>
+      <div id="g-serving" data-match="serving"><dt>Serving</dt><dd><p class="g-def">Running inference for many users at once behind an API, with goals for speed and cost. vLLM, SGLang and TensorRT-LLM are serving engines.</p><p class="g-see">See <a href="#idle">1 · The problem</a></p></dd></div>
+      <div id="g-gpu"><dt>GPU</dt><dd><p class="g-def">Graphics processing unit: a chip with thousands of small cores and very fast memory, built for the matrix maths inside neural networks. Large models are split or copied across several GPUs.</p><p class="g-see">See <a href="#split">3 · Split visualizer</a></p></dd></div>
+      <div id="g-vllm"><dt>vLLM</dt><dd><p class="g-def">An open-source engine for serving language models. It calls its paged KV cache PagedAttention. This page uses it (version 0.34) for its examples and defaults.</p><p class="g-see">See <a href="#batching">2 · One GPU</a></p></dd></div>
+    </dl>
+  </div>
+  <div class="gloss-group" data-cat="inside">
+    <h3>Inside the model</h3>
+    <dl class="gloss">
+      <div id="g-transformer" data-match="transformer"><dt>Transformer</dt><dd><p class="g-def">The architecture nearly every LLM uses. Each layer has an attention block, which mixes information between tokens, and an MLP block, which transforms each token on its own.</p><p class="g-see">See <a href="#tp">Tensor parallel</a></p></dd></div>
+      <div id="g-attention" data-match="attention"><dt>Attention</dt><dd><p class="g-def">The part of each layer that lets a token look back at earlier tokens to decide what matters. It needs the keys and values of every earlier token, which is why the KV cache exists.</p><p class="g-see">See <a href="#batching">2 · One GPU</a></p></dd></div>
+      <div id="g-head" data-match="attention head|attention heads"><dt>Attention head</dt><dd><p class="g-def">Attention is split into several independent heads that run side by side. Tensor parallelism hands each GPU a share of the heads, so the head count must divide evenly by the number of GPUs.</p><p class="g-see">See <a href="#tp">Tensor parallel</a></p></dd></div>
+      <div id="g-gqa" data-match="grouped-query attention|GQA|KV heads|KV head|KV-head"><dt>Grouped-query attention (GQA) and KV heads</dt><dd><p class="g-def">A design where several attention heads share one set of keys and values, which shrinks the KV cache. A model with 8 KV heads can split them across up to 8 GPUs with tensor parallelism; beyond that, KV heads have to be copied instead of split.</p><p class="g-see">See <a href="#tp">Tensor parallel</a></p></dd></div>
+      <div id="g-mla" data-match="multi-head latent attention|MLA"><dt>Multi-head latent attention (MLA)</dt><dd><p class="g-def">An attention design used by some large mixture-of-experts models. It compresses each token&#x27;s keys and values into one small latent vector per layer, so the KV cache is several times smaller. With effectively one KV head, tensor parallelism would copy it to every GPU, so MLA models usually run attention data-parallel.</p><p class="g-see">See <a href="#ep">Expert parallel</a></p></dd></div>
+      <div id="g-mlp" data-match="MLP|MLPs|feed-forward"><dt>MLP (feed-forward block)</dt><dd><p class="g-def">The second half of each layer: large matrix multiplies applied to each token separately. It holds most of a dense model&#x27;s weights. In a mixture-of-experts model it is replaced by many experts.</p><p class="g-see">See <a href="#tp">Tensor parallel</a>, <a href="#ep">Expert parallel</a></p></dd></div>
+      <div id="g-activations" data-match="activation|activations"><dt>Activations</dt><dd><p class="g-def">The intermediate numbers a token produces as it moves through the layers. They are small compared with the weights, which is why pipeline parallelism can pass them between servers over a slow link.</p><p class="g-see">See <a href="#pp">Pipeline parallel</a></p></dd></div>
+      <div id="g-tensor" data-match="tensor|tensors"><dt>Tensor</dt><dd><p class="g-def">A multi-dimensional array of numbers. Weights, activations and the KV cache are all tensors. Tensor parallelism is named after splitting these arrays across GPUs.</p><p class="g-see">See <a href="#tp">Tensor parallel</a></p></dd></div>
+      <div id="g-moe" data-match="MoE|MoEs|mixture-of-experts|mixture of experts"><dt>Mixture of experts (MoE)</dt><dd><p class="g-def">A model whose MLP is replaced by many smaller experts, with a router choosing a few for each token. A large MoE model may store hundreds of billions of weights but use only a few tens of billions per token, so it computes like a much smaller model while needing the memory of a huge one.</p><p class="g-see">See <a href="#ep">Expert parallel</a></p></dd></div>
+      <div id="g-expert" data-match="expert|experts"><dt>Expert</dt><dd><p class="g-def">One of the specialist MLPs inside a mixture-of-experts layer. Large models have hundreds per layer and send each token to a handful of them.</p><p class="g-see">See <a href="#ep">Expert parallel</a></p></dd></div>
+    </dl>
+  </div>
+  <div class="gloss-group" data-cat="memory">
+    <h3>Memory and the KV cache</h3>
+    <dl class="gloss">
+      <div id="g-kv" data-match="KV cache|KV-cache|KV"><dt>KV cache</dt><dd><p class="g-def">The working memory each in-flight request needs. It grows with every token, and it shares the GPU&#x27;s memory with the weights, so it usually limits how many requests fit at once.</p><p class="g-bus"><b>On the bus:</b> The luggage rack.</p><p class="g-see">See <a href="#batching">2 · One GPU</a>, <a href="#bus">The bus loop</a></p></dd></div>
+      <div id="g-paged" data-match="PagedAttention|paged KV cache|paged|paging|KV block|KV blocks"><dt>Paged KV cache (PagedAttention) and KV blocks</dt><dd><p class="g-def">Storing the KV cache in small fixed-size blocks handed out as a request grows. Like virtual memory pages, it avoids reserving space a request may never use. vLLM calls this PagedAttention and uses 64 tokens per block by default.</p><p class="g-bus"><b>On the bus:</b> Rack space handed out one bag at a time.</p><p class="g-see">See <a href="#batching">2 · One GPU</a></p></dd></div>
+      <div id="g-context" data-match="context window|context length|context lengths|long-context"><dt>Context window (context length)</dt><dd><p class="g-def">The most tokens one request may hold, prompt plus answer. Longer windows need more KV cache per request, so fewer requests fit at once.</p><p class="g-see">See <a href="#batching">2 · One GPU</a>, <a href="#choose">Which split to use</a></p></dd></div>
+      <div id="g-preempt" data-match="preemption|preempted|preempt|preempts"><dt>Preemption</dt><dd><p class="g-def">What a serving engine does when the KV cache runs out mid-answer: it pauses a request, frees its memory and recomputes it later. vLLM picks the most recently admitted request.</p><p class="g-bus"><b>On the bus:</b> A rider bumped back to the stop.</p><p class="g-see">See <a href="#batching">2 · One GPU</a>, <a href="#bus">The bus loop</a></p></dd></div>
+      <div id="g-prefix" data-match="prefix caching|prefix cache|prefix-aware"><dt>Prefix caching</dt><dd><p class="g-def">Reusing the KV cache of a prompt beginning that was already processed, such as a shared system prompt, instead of computing it again. On by default in vLLM.</p><p class="g-see">See <a href="#beyond">4 · Beyond parallelism</a></p></dd></div>
+    </dl>
+  </div>
+  <div class="gloss-group" data-cat="serving">
+    <h3>Serving and scheduling</h3>
+    <dl class="gloss">
+      <div id="g-prefill" data-match="prefill|prefills"><dt>Prefill</dt><dd><p class="g-def">The first phase of a request: processing the whole prompt at once to fill its KV cache. It is compute-bound and decides the time to first token.</p><p class="g-bus"><b>On the bus:</b> Loading the rider&#x27;s luggage at the stop.</p><p class="g-see">See <a href="#idle">1 · The problem</a>, <a href="#batching">2 · One GPU</a></p></dd></div>
+      <div id="g-decode" data-match="decode|decoding"><dt>Decode</dt><dd><p class="g-def">The second phase: producing the answer one token per step. Each step reads all the weights to do very little maths, so decode is memory-bound.</p><p class="g-bus"><b>On the bus:</b> Driving laps.</p><p class="g-see">See <a href="#idle">1 · The problem</a></p></dd></div>
+      <div id="g-step" data-match="decode step|decode steps|iteration|iterations"><dt>Decode step (iteration)</dt><dd><p class="g-def">One pass through the whole model that gives every running request one more token. Everyone in the batch shares the step, so its cost is split among them.</p><p class="g-bus"><b>On the bus:</b> One lap.</p><p class="g-see">See <a href="#idle">1 · The problem</a>, <a href="#bus">The bus loop</a></p></dd></div>
+      <div id="g-batching" data-match="batching|batch size|batch|batches|batched"><dt>Batching (batch size)</dt><dd><p class="g-def">Processing many requests in the same step so they share one read of the weights. The batch size is how many are in the step. It is the main lever on GPU utilisation.</p><p class="g-bus"><b>On the bus:</b> Filling the bus.</p><p class="g-see">See <a href="#idle">1 · The problem</a>, <a href="#bus">The bus loop</a></p></dd></div>
+      <div id="g-continuous" data-match="continuous batching|continuous batch|iteration-level scheduling"><dt>Continuous batching (iteration-level scheduling)</dt><dd><p class="g-def">Scheduling where finished requests leave and waiting ones join at every step, so the batch stays full.</p><p class="g-bus"><b>On the bus:</b> Riders get on and off between laps.</p><p class="g-see">See <a href="#batching">2 · One GPU</a>, <a href="#bus">The bus loop</a></p></dd></div>
+      <div id="g-chunked" data-match="chunked prefill|chunked loading"><dt>Chunked prefill</dt><dd><p class="g-def">Splitting a long prompt&#x27;s prefill into pieces spread over several steps, so one big prompt never stalls everyone else&#x27;s next token. On by default.</p><p class="g-bus"><b>On the bus:</b> Loading a long prompt&#x27;s bags 16 per stop over several laps, so the bus keeps moving.</p><p class="g-see">See <a href="#batching">2 · One GPU</a>, <a href="#bus">The bus loop</a></p></dd></div>
+      <div id="g-scheduler" data-match="scheduler|scheduling"><dt>Scheduler</dt><dd><p class="g-def">The part of a serving engine that decides, every step, which requests run and how many tokens each one processes.</p><p class="g-see">See <a href="#batching">2 · One GPU</a></p></dd></div>
+      <div id="g-microbatch" data-match="micro-batch|micro-batches|micro-batching"><dt>Micro-batch</dt><dd><p class="g-def">A slice of the batch. Pipeline parallelism keeps several micro-batches in flight so every stage has work while the others are busy.</p><p class="g-bus"><b>On the bus:</b> One of several busloads on the relay at once.</p><p class="g-see">See <a href="#pp">Pipeline parallel</a></p></dd></div>
+      <div id="g-concurrency" data-match="concurrency|concurrent|in flight"><dt>Concurrency (in flight)</dt><dd><p class="g-def">How many requests are being served at the same moment. The ceiling is set by KV cache space and by a configured cap on concurrent requests.</p><p class="g-bus"><b>On the bus:</b> Seats taken.</p><p class="g-see">See <a href="#batching">2 · One GPU</a>, <a href="#bus">The bus loop</a></p></dd></div>
+      <div id="g-queue" data-match="queue|queues|queueing|queued"><dt>Queueing</dt><dd><p class="g-def">Requests that have arrived but cannot start yet because the batch or the KV cache is full. Time spent here counts toward time to first token, and a queue that keeps growing means the server is over capacity.</p><p class="g-bus"><b>On the bus:</b> Riders waiting at the stop.</p><p class="g-see">See <a href="#batching">2 · One GPU</a>, <a href="#bus">The bus loop</a></p></dd></div>
+      <div id="g-lb" data-match="load balancer|load balancers|load-balancer|balancer"><dt>Load balancer</dt><dd><p class="g-def">A router that sends each incoming request to one of several replicas. vLLM&#x27;s data-parallel balancer picks the least busy one.</p><p class="g-see">See <a href="#dp">Data parallel</a></p></dd></div>
+      <div id="g-specdec" data-match="speculative decoding"><dt>Speculative decoding</dt><dd><p class="g-def">A small, fast drafter guesses several tokens and the full model checks them all in one step, keeping the ones it agrees with. It spends spare compute to get more than one token per step.</p><p class="g-see">See <a href="#beyond">4 · Beyond parallelism</a></p></dd></div>
+      <div id="g-async" data-match="async scheduling"><dt>Async scheduling</dt><dd><p class="g-def">The CPU plans the next step while the GPU runs the current one, closing the idle gaps between steps.</p><p class="g-see">See <a href="#beyond">4 · Beyond parallelism</a></p></dd></div>
+      <div id="g-cudagraph" data-match="CUDA graphs|CUDA graph"><dt>CUDA graphs</dt><dd><p class="g-def">A recorded sequence of GPU kernels that can be replayed with one launch, removing the overhead of starting dozens of small kernels every step.</p><p class="g-see">See <a href="#beyond">4 · Beyond parallelism</a></p></dd></div>
+      <div id="g-disagg" data-match="prefill/decode disaggregation|disaggregation"><dt>Prefill/decode disaggregation</dt><dd><p class="g-def">Running prefill and decode on separate pools of GPUs, each with its own layout, so long prompts never interrupt token generation. It makes latency more predictable rather than raising throughput.</p><p class="g-see">See <a href="#beyond">4 · Beyond parallelism</a></p></dd></div>
+    </dl>
+  </div>
+  <div class="gloss-group" data-cat="parallel">
+    <h3>Parallelism</h3>
+    <dl class="gloss">
+      <div id="g-tp" data-match="tensor parallelism|tensor parallel|tensor-parallel|TP"><dt>Tensor parallelism (TP)</dt><dd><p class="g-def">Splitting every layer&#x27;s weight matrices across GPUs. All of them work on every token together and combine results twice per layer. It gives the lowest latency per token but needs a very fast link.</p><p class="g-see">See <a href="#tp">Tensor parallel</a>, <a href="#split">3 · Split visualizer</a></p></dd></div>
+      <div id="g-pp" data-match="pipeline parallelism|pipeline parallel|pipeline-parallel|PP"><dt>Pipeline parallelism (PP)</dt><dd><p class="g-def">Giving each GPU a consecutive block of layers and passing activations from one to the next. It works over slow links but does not speed up a single request.</p><p class="g-bus"><b>On the bus:</b> A relay of drivers, each covering one stretch of the loop.</p><p class="g-see">See <a href="#pp">Pipeline parallel</a>, <a href="#split">3 · Split visualizer</a></p></dd></div>
+      <div id="g-stage" data-match="pipeline stage|pipeline stages|stage|stages"><dt>Pipeline stage</dt><dd><p class="g-def">One GPU, or group of GPUs, in a pipeline, responsible for one block of layers.</p><p class="g-bus"><b>On the bus:</b> One driver&#x27;s stretch.</p><p class="g-see">See <a href="#pp">Pipeline parallel</a></p></dd></div>
+      <div id="g-bubble" data-match="bubble|bubbles"><dt>Pipeline bubble</dt><dd><p class="g-def">Time a pipeline stage sits idle waiting for work from the stage before it. It shrinks when more micro-batches are in flight.</p><p class="g-bus"><b>On the bus:</b> A driver waiting for the next handoff.</p><p class="g-see">See <a href="#pp">Pipeline parallel</a></p></dd></div>
+      <div id="g-dp" data-match="data parallelism|data parallel|data-parallel|DP"><dt>Data parallelism (DP)</dt><dd><p class="g-def">Running several complete copies of the model, each serving its own requests. Throughput grows almost linearly and nothing is shared, but every copy needs room for all the weights.</p><p class="g-bus"><b>On the bus:</b> More buses on the same loop.</p><p class="g-see">See <a href="#dp">Data parallel</a>, <a href="#bus">The bus loop</a></p></dd></div>
+      <div id="g-replica" data-match="replica|replicas"><dt>Replica</dt><dd><p class="g-def">One complete, independent copy of the model and its serving engine.</p><p class="g-bus"><b>On the bus:</b> One bus.</p><p class="g-see">See <a href="#dp">Data parallel</a></p></dd></div>
+      <div id="g-ep" data-match="expert parallelism|expert parallel|expert-parallel|wide EP|EP"><dt>Expert parallelism (EP)</dt><dd><p class="g-def">Spreading a mixture-of-experts model&#x27;s experts across GPUs and sending each token to the GPUs that hold its chosen experts. “Wide EP” spreads them over many GPUs or servers.</p><p class="g-see">See <a href="#ep">Expert parallel</a>, <a href="#split">3 · Split visualizer</a></p></dd></div>
+      <div id="g-cp" data-match="context parallelism"><dt>Context parallelism</dt><dd><p class="g-def">Splitting one very long sequence across GPUs, so prompts or KV caches too big for one GPU can still be served.</p><p class="g-see">See <a href="#beyond">4 · Beyond parallelism</a></p></dd></div>
+      <div id="g-rank" data-match="rank|ranks"><dt>Rank</dt><dd><p class="g-def">The numbered ID of one process, usually one GPU, within a parallel group. A TP=4 group has ranks 0 to 3.</p><p class="g-see">See <a href="#dp">Data parallel</a></p></dd></div>
+      <div id="g-collective" data-match="collective|collectives"><dt>Collective</dt><dd><p class="g-def">A communication pattern in which a whole group of GPUs exchanges data at once, such as all-reduce or all-to-all. Every member must take part, so the slowest one sets the pace.</p><p class="g-see">See <a href="#split">3 · Split visualizer</a></p></dd></div>
+      <div id="g-allreduce" data-match="all-reduce|all-reduces|allreduce"><dt>All-reduce</dt><dd><p class="g-def">A collective that adds up a tensor from every GPU and gives each GPU the total. Tensor parallelism needs two per layer.</p><p class="g-see">See <a href="#tp">Tensor parallel</a>, <a href="#split">3 · Split visualizer</a></p></dd></div>
+      <div id="g-alltoall" data-match="all-to-all"><dt>All-to-all</dt><dd><p class="g-def">A collective in which every GPU sends a different piece of data to every other GPU. Expert parallelism uses it to send tokens to their experts and bring the results back.</p><p class="g-see">See <a href="#ep">Expert parallel</a>, <a href="#split">3 · Split visualizer</a></p></dd></div>
+      <div id="g-lockstep" data-match="lockstep"><dt>Lockstep</dt><dd><p class="g-def">Moving together, step for step: no GPU can start the next step until the others have finished this one. Tensor-parallel GPUs run in lockstep, and so do the data-parallel ranks of a MoE model.</p><p class="g-see">See <a href="#tp">Tensor parallel</a>, <a href="#dp">Data parallel</a></p></dd></div>
+      <div id="g-eplb" data-match="EPLB|expert load balancing"><dt>Expert load balancing (EPLB)</dt><dd><p class="g-def">Moving or copying popular experts so no GPU becomes a hotspot while others sit idle.</p><p class="g-see">See <a href="#ep">Expert parallel</a></p></dd></div>
+    </dl>
+  </div>
+  <div class="gloss-group" data-cat="hardware">
+    <h3>Hardware and networking</h3>
+    <dl class="gloss">
+      <div id="g-node" data-match="node|nodes"><dt>Node (server)</dt><dd><p class="g-def">One machine, usually holding 4 or 8 GPUs. GPUs inside a node talk over fast links. Between nodes they use the network.</p><p class="g-see">See <a href="#choose">Which split to use</a></p></dd></div>
+      <div id="g-interconnect" data-match="interconnect|interconnects"><dt>Interconnect</dt><dd><p class="g-def">The links that carry data between GPUs: NVLink inside a node, PCIe on cheaper cards, and InfiniBand or Ethernet between nodes. Its speed decides which split is practical.</p><p class="g-see">See <a href="#tp">Tensor parallel</a>, <a href="#pp">Pipeline parallel</a></p></dd></div>
+      <div id="g-nvlink" data-match="NVLink"><dt>NVLink</dt><dd><p class="g-def">NVIDIA&#x27;s direct GPU-to-GPU link, carrying from several hundred gigabytes to terabytes per second per GPU. Rack-scale systems join dozens of GPUs into one NVLink domain.</p><p class="g-see">See <a href="#tp">Tensor parallel</a></p></dd></div>
+      <div id="g-pcie" data-match="PCIe"><dt>PCIe</dt><dd><p class="g-def">The general-purpose expansion bus in every computer. Gen5 x16 carries about 128 GB/s in total, several times slower than NVLink. Consumer and many workstation cards rely on it alone.</p><p class="g-see">See <a href="#pp">Pipeline parallel</a>, <a href="#choose">Which split to use</a></p></dd></div>
+      <div id="g-ib" data-match="InfiniBand|RoCE"><dt>InfiniBand and RoCE</dt><dd><p class="g-def">High-speed networks between servers. InfiniBand is a dedicated fabric. RoCE runs the same RDMA protocol over Ethernet.</p><p class="g-see">See <a href="#ep">Expert parallel</a></p></dd></div>
+      <div id="g-rdma" data-match="GPUDirect RDMA|GPUDirect|RDMA"><dt>RDMA (GPUDirect RDMA)</dt><dd><p class="g-def">Remote direct memory access: the network card copies data straight between GPU memories in different servers without going through the CPU. Fast cross-node tensor or expert parallelism needs it.</p><p class="g-see">See <a href="#ep">Expert parallel</a></p></dd></div>
+      <div id="g-kernel" data-match="kernel|kernels"><dt>Kernel</dt><dd><p class="g-def">A single program launched on the GPU, such as one matrix multiply. A decode step launches dozens of them.</p><p class="g-see">See <a href="#beyond">4 · Beyond parallelism</a></p></dd></div>
+    </dl>
+  </div>
+  <div class="gloss-group" data-cat="limits">
+    <h3>Speed limits</h3>
+    <dl class="gloss">
+      <div id="g-bandwidth" data-match="memory bandwidth|bandwidth"><dt>Memory bandwidth</dt><dd><p class="g-def">How fast data moves between GPU memory and the compute cores, in bytes per second. During decode this, not maths speed, usually sets the pace.</p><p class="g-bus"><b>On the bus:</b> How fast the bus can drive the route.</p><p class="g-see">See <a href="#idle">1 · The problem</a></p></dd></div>
+      <div id="g-membound" data-match="memory-bound|memory-bandwidth-bound|bandwidth-bound"><dt>Memory-bound</dt><dd><p class="g-def">Limited by how fast data can be read rather than how fast it can be computed. Decode with a small batch is memory-bound.</p><p class="g-bus"><b>On the bus:</b> The lap costs the same however many ride.</p><p class="g-see">See <a href="#idle">1 · The problem</a></p></dd></div>
+      <div id="g-compbound" data-match="compute-bound"><dt>Compute-bound</dt><dd><p class="g-def">Limited by maths speed. Prefill and very large decode batches are compute-bound.</p><p class="g-see">See <a href="#idle">1 · The problem</a></p></dd></div>
+    </dl>
+  </div>
+  <div class="gloss-group" data-cat="metrics">
+    <h3>Measuring it</h3>
+    <dl class="gloss">
+      <div id="g-throughput" data-match="throughput"><dt>Throughput</dt><dd><p class="g-def">Work finished per second, usually tokens per second across the whole deployment. It decides the cost per token.</p><p class="g-bus"><b>On the bus:</b> Words per second across all riders.</p><p class="g-see">See <a href="#idle">1 · The problem</a>, <a href="#dp">Data parallel</a></p></dd></div>
+      <div id="g-latency" data-match="latency|latencies"><dt>Latency</dt><dd><p class="g-def">How long someone waits. For LLMs it is split into time to first token and the time between later tokens.</p><p class="g-see">See <a href="#tp">Tensor parallel</a>, <a href="#pp">Pipeline parallel</a></p></dd></div>
+      <div id="g-itl" data-match="ITL|TPOT|inter-token latency|per-token latency|time per output token"><dt>Inter-token latency (ITL, TPOT)</dt><dd><p class="g-def">The time between successive tokens of one answer once it is streaming. TPOT, time per output token, is the same idea averaged over the answer. It sets how fast text appears to scroll.</p><p class="g-bus"><b>On the bus:</b> Lap time.</p><p class="g-see">See <a href="#tp">Tensor parallel</a>, <a href="#beyond">4 · Beyond parallelism</a></p></dd></div>
+      <div id="g-pct" data-match="p50|p95|p99|percentile|percentiles|tail latency"><dt>Percentiles: p50, p95, p99</dt><dd><p class="g-def">p95 latency means 95% of requests were faster than this. p50 is the median. The high percentiles, called the tail, capture the slow experiences users complain about.</p><p class="g-see">See <a href="#beyond">4 · Beyond parallelism</a></p></dd></div>
+      <div id="g-util" data-match="utilisation|utilization|utilised|utilized"><dt>GPU utilisation</dt><dd><p class="g-def">The share of time, or of peak capability, a GPU spends doing useful work. Idle waiting and communication count against it.</p><p class="g-bus"><b>On the bus:</b> How full the bus is, lap after lap.</p><p class="g-see">See <a href="#idle">1 · The problem</a>, <a href="#bus">The bus loop</a></p></dd></div>
+      <div id="g-qps" data-match="QPS"><dt>QPS</dt><dd><p class="g-def">Queries per second: the number of incoming requests per second.</p><p class="g-see">See <a href="#ep">Expert parallel</a></p></dd></div>
+    </dl>
+  </div>
+  <p class="gloss-empty" id="gloss-empty" hidden>No terms match. Try a shorter word, or clear the search.</p>
+</section>
+
+<!-- ============================== SOURCES ============================== -->
+<section class="sec sources" id="sources">
+  <div class="sec-head">
+    <div class="eyebrow">6 · Sources</div>
+    <h2>Where the numbers come from</h2>
+    <p class="lede">Official vLLM documentation first, then papers and vendor engineering blogs. Checked November 2026.</p>
+  </div>
+  <ol id="source-list">
+    <li id="src-par-doc"><a href="https://docs.vllm.ai/en/latest/serving/parallelism_scaling.html">vLLM docs: Parallelism and Scaling</a><span class="s-kind">official</span></li>
+    <li id="src-dp-doc"><a href="https://docs.vllm.ai/en/latest/serving/data_parallel_deployment.html">vLLM docs: Data Parallel Deployment</a><span class="s-kind">official</span></li>
+    <li id="src-ep-doc"><a href="https://docs.vllm.ai/en/latest/serving/expert_parallel_deployment.html">vLLM docs: Expert Parallel Deployment</a><span class="s-kind">official</span></li>
+    <li id="src-opt-doc"><a href="https://docs.vllm.ai/en/latest/configuration/optimization.html">vLLM docs: Optimization and Tuning</a><span class="s-kind">official</span></li>
+    <li id="src-args-doc"><a href="https://docs.vllm.ai/en/latest/configuration/engine_args.html">vLLM docs: Engine Arguments</a><span class="s-kind">official</span></li>
+    <li id="src-disagg-doc"><a href="https://docs.vllm.ai/en/latest/features/disagg_prefill.html">vLLM docs: Disaggregated Prefilling</a><span class="s-kind">official</span></li>
+    <li id="src-prefix-doc"><a href="https://docs.vllm.ai/en/latest/design/prefix_caching.html">vLLM docs: Automatic Prefix Caching design</a><span class="s-kind">official</span></li>
+    <li id="src-specdec-doc"><a href="https://docs.vllm.ai/en/latest/features/speculative_decoding/">vLLM docs: Speculative Decoding</a><span class="s-kind">official</span></li>
+    <li id="src-cuda-doc"><a href="https://docs.vllm.ai/en/latest/design/cuda_graphs.html">vLLM docs: CUDA Graphs</a><span class="s-kind">official</span></li>
+    <li id="src-llama-src"><a href="https://docs.vllm.ai/en/v0.16.0/api/vllm/model_executor/models/llama/">vLLM source: Llama attention, KV-head partition vs replicate comments</a><span class="s-kind">official</span></li>
+    <li id="src-pp-rfc"><a href="https://github.com/vllm-project/vllm/issues/11945">vLLM RFC #11945: Pipeline parallelism in V1</a><span class="s-kind">github</span></li>
+    <li id="src-releases"><a href="https://github.com/vllm-project/vllm/releases/tag/v0.34.0">vLLM release v0.34.0 (2026-11-16)</a><span class="s-kind">github</span></li>
+    <li id="src-v014"><a href="https://github.com/vllm-project/vllm/releases/tag/v0.14.0">vLLM release v0.14.0: async scheduling on by default</a><span class="s-kind">github</span></li>
+    <li id="src-v011"><a href="https://github.com/vllm-project/vllm/releases/tag/v0.11.0">vLLM release v0.11.0: V0 removed, FULL_AND_PIECEWISE CUDA graphs</a><span class="s-kind">github</span></li>
+    <li id="src-v1-blog"><a href="https://vllm.ai/blog/2025-01-27-v1-alpha-release">vLLM blog: V1 alpha release</a><span class="s-kind">blog</span></li>
+    <li id="src-specdec-blog"><a href="https://vllm.ai/blog/2024-10-17-spec-decode">vLLM blog: How Speculative Decoding Boosts vLLM Performance by up to 2.8x</a><span class="s-kind">blog</span></li>
+    <li id="src-wideep"><a href="https://vllm.ai/blog/2025-12-17-large-scale-serving">vLLM blog: Large Scale Serving, DeepSeek at 2.2k tok/s per H200 with Wide-EP</a><span class="s-kind">blog</span></li>
+    <li id="src-gb200"><a href="https://vllm.ai/blog/2026-02-03-dsr1-gb200-part1">vLLM blog: DeepSeek-R1 on GB200 NVL72 with Wide-EP, part 1</a><span class="s-kind">blog</span></li>
+    <li id="src-mrv2"><a href="https://vllm.ai/blog/2026-03-24-mrv2">vLLM blog: Model Runner V2</a><span class="s-kind">blog</span></li>
+    <li id="src-pd-guide"><a href="https://vllm.ai/blog/2026-09-29-disaggregated-serving-guide">vLLM blog: Taking vLLM Apart, a disaggregated serving guide</a><span class="s-kind">blog</span></li>
+    <li id="src-megatron"><a href="https://arxiv.org/abs/1909.08053">Shoeybi et al., Megatron-LM: Training Multi-Billion Parameter Language Models Using Model Parallelism (2019)</a><span class="s-kind">paper</span></li>
+    <li id="src-megatron2"><a href="https://arxiv.org/abs/2104.04473">Narayanan et al., Efficient Large-Scale Language Model Training on GPU Clusters Using Megatron-LM (2021)</a><span class="s-kind">paper</span></li>
+    <li id="src-paged"><a href="https://arxiv.org/abs/2309.06180">Kwon et al., Efficient Memory Management for LLM Serving with PagedAttention (SOSP 2023)</a><span class="s-kind">paper</span></li>
+    <li id="src-orca"><a href="https://www.usenix.org/conference/osdi22/presentation/yu">Yu et al., Orca: A Distributed Serving System for Transformer-Based Generative Models (OSDI 2022)</a><span class="s-kind">paper</span></li>
+    <li id="src-sarathi"><a href="https://arxiv.org/abs/2403.02310">Agrawal et al., Taming Throughput-Latency Tradeoff in LLM Inference with Sarathi-Serve (2024)</a><span class="s-kind">paper</span></li>
+    <li id="src-distserve"><a href="https://arxiv.org/abs/2401.09670">Zhong et al., DistServe: Disaggregating Prefill and Decoding (OSDI 2024)</a><span class="s-kind">paper</span></li>
+    <li id="src-shift"><a href="https://arxiv.org/html/2509.16495v2">Snowflake AI Research, Shift Parallelism: Low-Latency, High-Throughput LLM Inference for Dynamic Workloads (2025)</a><span class="s-kind">paper</span></li>
+    <li id="src-dell-char"><a href="https://arxiv.org/html/2610.05305">Mirzaei & Mitra (Dell), Characterizing Parallelism Strategies in LLM Inference (2026)</a><span class="s-kind">paper</span></li>
+    <li id="src-psu-amd"><a href="https://arxiv.org/html/2603.05692v1">Topcu et al. (Penn State / AMD), Parallelization Strategies for Dense LLM Deployment (2026)</a><span class="s-kind">paper</span></li>
+    <li id="src-failsafe"><a href="https://arxiv.org/abs/2511.14116">FailSafe: High-performance Resilient Serving (MLSys 2026)</a><span class="s-kind">paper</span></li>
+    <li id="src-nvidia-opt"><a href="https://developer.nvidia.com/blog/mastering-llm-techniques-inference-optimization/">NVIDIA Technical Blog: Mastering LLM Techniques, Inference Optimization</a><span class="s-kind">vendor</span></li>
+    <li id="src-nvidia-trillion"><a href="https://developer.nvidia.com/blog/demystifying-ai-inference-deployments-for-trillion-parameter-large-language-models">NVIDIA Technical Blog: Demystifying AI Inference Deployments for Trillion Parameter LLMs</a><span class="s-kind">vendor</span></li>
+    <li id="src-kipply"><a href="https://kipp.ly/transformer-inference-arithmetic/">kipply, Transformer Inference Arithmetic</a><span class="s-kind">blog</span></li>
+    <li id="src-hf-playbook"><a href="https://huggingface.co/spaces/nanotron/ultrascale-playbook">Hugging Face, The Ultra-Scale Playbook</a><span class="s-kind">guide</span></li>
+    <li id="src-databricks"><a href="https://www.databricks.com/blog/llm-inference-performance-engineering-best-practices">Databricks: LLM Inference Performance Engineering, Best Practices</a><span class="s-kind">vendor</span></li>
+    <li id="src-amd-tp"><a href="https://rocm.blogs.amd.com/artificial-intelligence/tensor-parallelism/README.html">AMD ROCm blog: Analyzing the Impact of Tensor Parallelism Configurations on LLM Inference Performance</a><span class="s-kind">vendor</span></li>
+    <li id="src-jarvis"><a href="https://jarvislabs.ai/blog/scaling-llm-inference-dp-pp-tp">Jarvislabs: Scaling LLM Inference, Data, Pipeline & Tensor Parallelism in vLLM</a><span class="s-kind">blog</span></li>
+    <li id="src-sglang-ep"><a href="https://lmsys.org/blog/2025-05-05-large-scale-ep/">LMSYS/SGLang: Deploying DeepSeek with PD Disaggregation and Large-Scale Expert Parallelism on 96 H100 GPUs</a><span class="s-kind">blog</span></li>
+    <li id="src-sglang-dp"><a href="https://docs.sglang.io/docs/advanced_features/dp_dpa_smg_guide">SGLang docs: DP, DP Attention and SMG guide</a><span class="s-kind">docs</span></li>
+    <li id="src-deepseek-infra"><a href="https://github.com/deepseek-ai/open-infra-index/blob/main/202502OpenSourceWeek/day_6_one_more_thing_deepseekV3R1_inference_system_overview.md">DeepSeek: V3/R1 Inference System Overview</a><span class="s-kind">vendor</span></li>
+    <li id="src-llm-d"><a href="https://llm-d.ai/">llm-d: Kubernetes-native distributed inference (prefix-aware routing, P/D, wide EP)</a><span class="s-kind">project</span></li>
+  </ol>
+</section>
+
+</main>
+<footer>
+  <div class="wrap">
+    <div>Built as a static, dependency-free page. Animations use Canvas and run in your browser.</div>
+    <div style="margin-top:6px">vLLM is a project of the vLLM team and the UC Berkeley Sky Computing Lab; this page is an independent explainer, uses vLLM for its examples and defaults, and is not affiliated with it.</div>
+  </div>
+</footer>
+
+<script src="js/common.js?v=1795030578"></script>
+<script src="js/viz-layer.js?v=1795030578"></script>
+<script src="js/viz-bus.js?v=1795030578"></script>
+<script src="js/viz-batching.js?v=1795030578"></script>
+<script src="js/viz-split.js?v=1795030578"></script>
+<script src="js/glossary.js?v=1795030578"></script>
+</body>
+</html>
