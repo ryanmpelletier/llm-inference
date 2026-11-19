@@ -134,7 +134,7 @@
   if (V.prefersReduced.matches) { state.t = LAYER_ANIM * 0.4; state.layer = 12; render(); }
   else V.animate(canvas, dt => {
     if (!state.paused) {
-      state.t += dt; state.flow = (state.flow + dt * 0.35) % 1;
+      state.t += dt; state.flow = (state.flow + dt * 0.1) % 1;
       if (state.t >= LAYER_ANIM) { state.t = 0; state.layer = (state.layer + 1) % LAYERS; }
     }
     render();

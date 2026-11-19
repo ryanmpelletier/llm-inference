@@ -64,8 +64,8 @@
   // everyday terms are linked once on the whole page; core concepts once per section
   const ONCE = new Set(['g-token', 'g-request', 'g-prompt', 'g-layer', 'g-weights', 'g-batching', 'g-latency', 'g-throughput',
     'g-serving', 'g-inference', 'g-llm', 'g-concurrency', 'g-queue', 'g-scheduler', 'g-interconnect', 'g-node', 'g-rank',
-    'g-tensor', 'g-kernel', 'g-util', 'g-bandwidth', 'g-activations', 'g-gpunames', 'g-precision', 'g-attention', 'g-dense',
-    'g-transformer', 'g-lockstep', 'g-collective', 'g-step', 'g-flops', 'g-hbm', 'g-context', 'g-replica', 'g-expert', 'g-stage']);
+    'g-tensor', 'g-kernel', 'g-util', 'g-bandwidth', 'g-activations', 'g-attention',
+    'g-transformer', 'g-lockstep', 'g-collective', 'g-step', 'g-context', 'g-replica', 'g-expert', 'g-stage']);
   const pageUsed = new Set();
   const SKIP = '.hero .lede b, a, code, pre, kbd, h1, h2, h3, h4, button, label, select, option, input, textarea, svg, canvas, sup, .lab, .eyebrow, .tag, .k, .scn, th, .cmd, .verdict, .hero-legend, .gloss, #glossary, .sources, .rail';
 

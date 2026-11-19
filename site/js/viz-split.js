@@ -10,7 +10,7 @@
   const state = { strategy: 'tp', gpus: 4, load: 3, speed: 1, t: 0, tokens: [], pulses: [], busy: [], memo: {} };
 
   const DESCR = {
-    tp: 'Every GPU holds a vertical slice of every layer. One batch runs on all GPUs at once; after each layer the partial results are summed with an all-reduce (the flashes).',
+    tp: 'Every GPU holds a vertical slice of every layer. One batch runs on all GPUs at once; twice per layer, after attention and after the MLP, the partial results are summed with an all-reduce (the flashes).',
     pp: 'Each GPU holds a contiguous block of layers. A batch walks GPU to GPU. With fewer micro-batches in flight than stages, downstream GPUs sit idle (the hatched bubble).',
     dp: 'Every GPU holds a full copy of the model. A load balancer sends each request to one replica; replicas never talk to each other.',
     ep: 'Attention weights are replicated (data-parallel), but each MoE layer\'s experts are spread across GPUs. Tokens hop to whichever GPU owns their chosen expert (all-to-all).'
@@ -48,10 +48,11 @@
       // a single batch moves through all layers on all GPUs together; up to `rate` batches queued
       if (state.tokens.length === 0) state.tokens.push({ layer: 0, id: Math.random() });
       const tkn = state.tokens[0];
-      const before = Math.floor(tkn.layer);
+      // two all-reduces per layer: after attention (half way) and after the MLP (end of the layer)
+      const before = Math.floor(tkn.layer * 2);
       tkn.layer += speed * dt;
-      const after = Math.floor(tkn.layer);
-      if (after !== before && after < L) state.pulses.push({ layer: after, t: 0, kind: 'allreduce' });
+      const after = Math.floor(Math.min(tkn.layer, L) * 2);
+      for (let k = before + 1; k <= after; k++) state.pulses.push({ layer: k / 2, t: 0, kind: 'allreduce' });
       if (tkn.layer >= L) { state.tokens.shift(); state.pulses.push({ layer: L, t: 0, kind: 'out' }); }
       for (let i = 0; i < N; i++) state.busy[i] = 1;
     } else if (s === 'pp') {
@@ -256,7 +257,7 @@
         ctx.strokeStyle = V.cssVar('--accent'); ctx.globalAlpha = a; ctx.lineWidth = 3;
         ctx.beginPath(); ctx.moveTo(b0.x, y); ctx.lineTo(bN.x + bN.w, y); ctx.stroke();
         ctx.fillStyle = fg; ctx.font = mono; ctx.textAlign = 'right';
-        if (p.layer < L) ctx.fillText('all-reduce', bN.x + bN.w - 4, y - 8);
+        ctx.fillText('all-reduce', bN.x + bN.w - 4, y - 8);
         ctx.globalAlpha = 1;
       } else if (p.kind === 'a2a') {
         const b1 = boxes[p.from], b2 = boxes[p.to];
@@ -292,7 +293,10 @@
     document.querySelectorAll('[data-split]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.split === s)));
     if (descr) descr.textContent = DESCR[s];
     const loadLbl = document.getElementById('split-load-label');
-    if (loadLbl) loadLbl.textContent = s === 'pp' ? 'micro-batches in flight' : s === 'tp' ? 'batches queued' : 'requests in flight';
+    if (loadLbl) loadLbl.textContent = s === 'pp' ? 'micro-batches in flight' : 'requests in flight';
+    // tensor parallel runs one batch at a time on all GPUs together, so a load control would change nothing
+    const loadCtl = document.getElementById('split-load');
+    if (loadCtl) loadCtl.closest('label').hidden = s === 'tp';
   }
   document.querySelectorAll('[data-split]').forEach(b => b.addEventListener('click', () => setStrategy(b.dataset.split)));
   document.querySelectorAll('[data-split-gpus]').forEach(b => b.addEventListener('click', () => {

@@ -21,7 +21,7 @@
   const STOPS = 10;
   const WATERMARK = 6;        // free bags kept in reserve before admitting anyone, like vLLM's free-block watermark
 
-  const knobs = { rate: 0.4, chunked: true, speed: 1, paused: false, n: 1 };
+  const knobs = { rate: 0.4, chunked: true, speed: 0.5, paused: false, n: 1 };
   let buses = [], queue = [], t = 0, seed = 5, nextId = 1, nextArrival = 0;
   let wordEvents = [], ttfts = [], done = 0, bumped = 0, particles = [], floaters = [], lastWords = 0;
 
@@ -241,7 +241,7 @@
     if (stalled) {
       ctx.fillStyle = V.cssVar('--idle'); ctx.font = '600 11px ' + mono;
       ctx.fillText(V.fitText(ctx, ['stopped to load ' + stalled.lastLoad + ' bags: no words meanwhile', 'loading ' + stalled.lastLoad + ' bags: no words', 'loading…'], maxW), cx, L.yc + 14);
-    } else ctx.fillText(V.fitText(ctx, ['lap time is ' + LAP.toFixed(1) + ' s, full or empty', 'lap: ' + LAP.toFixed(1) + ' s, full or empty', LAP.toFixed(1) + ' s a lap'], maxW), cx, L.yc + 14);
+    } else ctx.fillText(V.fitText(ctx, ['a lap takes the same time, full or empty', 'same lap time, full or empty', 'same lap time'], maxW), cx, L.yc + 14);
     // particles: boarding and leaving
     particles = particles.filter(p => now - p.t0 < 600);
     particles.forEach(p => {
@@ -383,14 +383,11 @@
     lastReadout = now;
     const span = Math.min(12, Math.max(1e-6, t));
     const wps = wordEvents.reduce((s, e) => s + e.n, 0) / span;
-    const avgT = ttfts.length ? ttfts.reduce((s, v) => s + v, 0) / ttfts.length : 0;
     const set = (id, v) => { const el = $(id); if (el) el.textContent = v; };
     set('bus-wps', t > 0.5 ? wps.toFixed(1) : '0');
     set('bus-onboard', buses.reduce((s, b) => s + onBoard(b), 0) + ' / ' + SEATS * buses.length);
     set('bus-last', String(lastWords));
     set('bus-wait', String(queue.length));
-    set('bus-ttft', ttfts.length ? avgT.toFixed(1) + ' s' : '–');
-    set('bus-bumped', String(bumped));
   }
 
   // ---- controls ----
@@ -400,8 +397,6 @@
     document.querySelectorAll('[data-bus-n]').forEach(x => x.setAttribute('aria-pressed', String(x === btn)));
     setBuses(+btn.dataset.busN);
   }));
-  const big = $('bus-big');
-  if (big) big.addEventListener('click', () => { queue.push(mkRider(44, 8)); });
   const rush = $('bus-rush');
   if (rush) rush.addEventListener('click', () => { for (let i = 0; i < 6; i++) queue.push(randomRider()); });
   const speedBtns = Array.from(document.querySelectorAll('[data-bus-speed]'));
@@ -414,10 +409,10 @@
   const rst = $('bus-reset');
   // Reset restores every control to its starting value, then restarts the simulation
   if (rst) rst.addEventListener('click', () => {
-    knobs.rate = 0.4; knobs.speed = 1; knobs.n = 1; knobs.paused = false;
+    knobs.rate = 0.4; knobs.speed = 0.5; knobs.n = 1; knobs.paused = false;
     if (rate) { rate.value = '0.4'; $('bus-rate-val').textContent = '0.4'; }
     document.querySelectorAll('[data-bus-n]').forEach(x => x.setAttribute('aria-pressed', String(x.dataset.busN === '1')));
-    speedBtns.forEach(x => x.setAttribute('aria-pressed', String(x.dataset.busSpeed === '1')));
+    speedBtns.forEach(x => x.setAttribute('aria-pressed', String(x.dataset.busSpeed === '0.5')));
     if (pause) pause.textContent = 'Pause';
     reset();
   });
